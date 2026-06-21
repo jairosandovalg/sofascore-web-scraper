@@ -5,7 +5,7 @@ import asyncio
 import time
 from datetime import datetime
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import stealth
 
 # ===========================================
 # 💻 CONFIGURACIÓN DE LA PÁGINA STREAMLIT
@@ -62,7 +62,6 @@ async def correr_scraping_playwright(url_liga):
     
     async with async_playwright() as p:
         log_box.write("🚀 Iniciando navegador invisible en la nube...")
-        # Levantamos Chromium emulando un perfil totalmente humano
         browser = await p.chromium.launch(headless=True, args=[
             "--no-sandbox", 
             "--disable-dev-shm-usage",
@@ -75,33 +74,34 @@ async def correr_scraping_playwright(url_liga):
         )
         
         page = await context.new_page()
-        # Activamos el modo Stealth para evadir Cloudflare
-        await stealth_async(page)
+        
+        # 🛡️ Corrección del error: stealth se ejecuta de manera directa sin await
+        stealth(page)
         
         try:
             log_box.write(f"🌍 Accediendo a: **{torneo_seleccionado}**")
             await page.goto(url_liga, timeout=60000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(4000) # Pausa táctica humana
+            await page.wait_for_timeout(4000) 
             
-            # Esperamos dinámicamente a que los enlaces de equipos aparezcan
             log_box.write("🔎 Buscando estructura de equipos...")
             await page.wait_for_selector("a[href*='/team/']", timeout=15000)
             
-            # Extraer los elementos del DOM
             enlaces_equipos = await page.query_selector_all("a[href*='/team/']")
             data_equipos = []
             
             for selector in enlaces_equipos:
                 href = await selector.get_attribute("href")
-                if 'football/team/' in href or '/team/html/' in href:
+                if href and ('football/team/' in href or '/team/html/' in href):
                     span = await selector.query_selector("span")
                     if span:
                         texto_equipo = await span.inner_text()
                         texto_equipo = texto_equipo.strip()
                         if texto_equipo and not texto_equipo.isdigit():
-                            data_equipos.append({"equipo": texto_equipo, "enlace": "https://www.sofascore.com" + href if href.startswith("/") else href})
+                            data_equipos.append({
+                                "equipo": texto_equipo, 
+                                "enlace": "https://www.sofascore.com" + href if href.startswith("/") else href
+                            })
             
-            # Limpieza rápida de duplicados
             df_eq_temp = pd.DataFrame(data_equipos).drop_duplicates(subset=["equipo"])
             data_equipos = df_eq_temp.to_dict('records') if not df_eq_temp.empty else []
             
@@ -124,7 +124,7 @@ async def correr_scraping_playwright(url_liga):
                         full_url = "https://www.sofascore.com" + href_p if href_p.startswith("/") else href_p
                         urls_partidos.append(full_url)
                 
-                urls_partidos = list(set(urls_partidos)) # Unicos
+                urls_partidos = list(set(urls_partidos)) 
                 
                 # 📊 PASO 3: ENTRAR AL PARTIDO Y EXTRAER MÉTRICAS
                 if urls_partidos:
@@ -133,7 +133,6 @@ async def correr_scraping_playwright(url_liga):
                     await page.goto(partido_url, wait_until="domcontentloaded")
                     await page.wait_for_timeout(4000)
                     
-                    # Intentar capturar metadatos básicos
                     try:
                         bdis = await page.query_selector_all("bdi")
                         local = await bdis[0].inner_text() if len(bdis) > 0 else "Local"
@@ -141,14 +140,12 @@ async def correr_scraping_playwright(url_liga):
                     except:
                         local, visita = "Local", "Visitante"
                         
-                    # Clic en el botón de estadísticas si está presente
                     try:
                         btn_stats = await page.query_selector("button[data-testid='tab-statistics']")
                         if btn_stats:
                             await btn_stats.click()
                             await page.wait_for_timeout(2000)
                             
-                            # Mapear bloques de métricas
                             bloques = await page.query_selector_all("div[class*='bg_surface']")
                             for b in bloques:
                                 filas_stats = await b.query_selector_all("div[class*='d_flex'][class*='flex-d_column']")
@@ -191,9 +188,9 @@ if ejecutar:
         st.session_state.datos_scraping = pd.concat([st.session_state.datos_scraping, df_nuevas], ignore_index=True).drop_duplicates(subset=["Local", "Visitante", "Métrica"])
         log_box.success("✨ ¡Tabla de datos en vivo actualizada!")
     else:
-        log_box.info("ℹ️ Ciclo completado sin nuevas filas parseadas.")
+        log_box.info("ℹ silence: Ciclo completado sin nuevas filas parseadas.")
         
-    # Re-pitar dataframe
+    # Re-pintar dataframe
     tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
     metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
     
