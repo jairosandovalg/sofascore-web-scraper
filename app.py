@@ -1,60 +1,18 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
+import asyncio
 import time
-import re
 from datetime import datetime
-import selenium
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
-import streamlit as st
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
 # ===========================================
 # 💻 CONFIGURACIÓN DE LA PÁGINA STREAMLIT
 # ===========================================
-st.set_page_config(page_title="Sofascore Scraper Pro", page_icon="⚽", layout="wide")
-st.title("⚽ Extractor de Estadísticas en Tiempo Real (Sofascore)")
-st.write("Esta versión incorpora configuraciones avanzadas anti-bloqueo (User-Agent y evasión de Cloudflare) para la nube.")
-
-# ===========================================
-# ⚙️ INICIALIZACIÓN DE SELENIUM (MEDIDAS ANTI-DETECCIÓN)
-# ===========================================
-@st.cache_resource
-def iniciar_driver():
-    options = webdriver.ChromeOptions()
-    options.add_argument("--start-maximized")
-    options.add_argument("--headless=new")             
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")               
-    options.add_argument("--disable-dev-shm-usage")    
-    options.add_argument("--disable-extensions")
-    
-    # 🕵️‍♂️ MÁSCARA ANTI-BOTS: Definimos un agente de usuario de una computadora real
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-    
-    # ❌ Desactivamos la propiedad que le avisa a las webs que estamos usando Selenium
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    
-    service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
-    
-    # Inyectamos un script para borrar rastro de automatización en Javascript
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-    })
-    
-    return driver
-
-try:
-    driver = iniciar_driver()
-except Exception as e:
-    st.error(f"Error al inicializar Chrome en el servidor: {e}")
-    st.stop()
+st.set_page_config(page_title="Sofascore Scraper Playwright", page_icon="⚽", layout="wide")
+st.title("⚽ Extractor de Estadísticas en Tiempo Real (Playwright Pro)")
+st.write("Esta versión utiliza Playwright Asíncrono + Stealth para evadir los bloqueos de Cloudflare en la nube.")
 
 # ===========================================
 # 🧠 MEMORIA TEMPORAL DE LA SESIÓN
@@ -82,13 +40,13 @@ if st.sidebar.button("🧹 Borrar Datos de la Pantalla"):
     st.session_state.datos_scraping = pd.DataFrame()
     st.rerun()
 
-# --- CUADRO DE MANDOS PRINCIPAL (DASHBOARD) ---
+# --- DASHBOARD PRINCIPAL ---
 col1, col2 = st.columns(2)
 metric_filas = col1.empty()
 metric_estado = col2.empty()
 
 log_box = st.container(border=True)
-log_box.write("### 📄 Logs del Navegador en la Nube")
+log_box.write("### 📄 Logs del Navegador (Playwright Stealth)")
 
 st.write("### 📊 Datos Extraídos en Vivo")
 tabla_datos = st.empty()
@@ -97,138 +55,151 @@ tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
 metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
 
 # ===========================================
-# 🔄 BUCLE DE EJECUCIÓN (REFRESCO CADA 10 SEGUNDOS)
+# 🤖 FUNCIÓN ASÍNCRONA DE SCRAPING CON PLAYWRIGHT
+# ===========================================
+async def correr_scraping_playwright(url_liga):
+    estadisticas = []
+    
+    async with async_playwright() as p:
+        log_box.write("🚀 Iniciando navegador invisible en la nube...")
+        # Levantamos Chromium emulando un perfil totalmente humano
+        browser = await p.chromium.launch(headless=True, args=[
+            "--no-sandbox", 
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled"
+        ])
+        
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800}
+        )
+        
+        page = await context.new_page()
+        # Activamos el modo Stealth para evadir Cloudflare
+        await stealth_async(page)
+        
+        try:
+            log_box.write(f"🌍 Accediendo a: **{torneo_seleccionado}**")
+            await page.goto(url_liga, timeout=60000, wait_until="domcontentloaded")
+            await page.wait_for_timeout(4000) # Pausa táctica humana
+            
+            # Esperamos dinámicamente a que los enlaces de equipos aparezcan
+            log_box.write("🔎 Buscando estructura de equipos...")
+            await page.wait_for_selector("a[href*='/team/']", timeout=15000)
+            
+            # Extraer los elementos del DOM
+            enlaces_equipos = await page.query_selector_all("a[href*='/team/']")
+            data_equipos = []
+            
+            for selector in enlaces_equipos:
+                href = await selector.get_attribute("href")
+                if 'football/team/' in href or '/team/html/' in href:
+                    span = await selector.query_selector("span")
+                    if span:
+                        texto_equipo = await span.inner_text()
+                        texto_equipo = texto_equipo.strip()
+                        if texto_equipo and not texto_equipo.isdigit():
+                            data_equipos.append({"equipo": texto_equipo, "enlace": "https://www.sofascore.com" + href if href.startswith("/") else href})
+            
+            # Limpieza rápida de duplicados
+            df_eq_temp = pd.DataFrame(data_equipos).drop_duplicates(subset=["equipo"])
+            data_equipos = df_eq_temp.to_dict('records') if not df_eq_temp.empty else []
+            
+            log_box.write(f"✅ ¡Se localizaron **{len(data_equipos)}** equipos únicos!")
+            
+            # 🔗 PASO 2: EXTRAER PARTIDOS DEL PRIMER EQUIPO DETECTADO
+            if data_equipos:
+                equipo_prueba = data_equipos[0]
+                log_box.write(f"⚽ Entrando al perfil de: *{equipo_prueba['equipo']}*")
+                await page.goto(equipo_prueba["enlace"], wait_until="domcontentloaded")
+                await page.wait_for_timeout(3000)
+                
+                await page.wait_for_selector("a[href*='/match/']", timeout=10000)
+                enlaces_partidos = await page.query_selector_all("a[href*='/match/']")
+                
+                urls_partidos = []
+                for p_selector in enlaces_partidos:
+                    href_p = await p_selector.get_attribute("href")
+                    if href_p and '/match/' in href_p:
+                        full_url = "https://www.sofascore.com" + href_p if href_p.startswith("/") else href_p
+                        urls_partidos.append(full_url)
+                
+                urls_partidos = list(set(urls_partidos)) # Unicos
+                
+                # 📊 PASO 3: ENTRAR AL PARTIDO Y EXTRAER MÉTRICAS
+                if urls_partidos:
+                    partido_url = urls_partidos[0]
+                    log_box.write(f"🔎 Extrayendo estadísticas de: {partido_url}")
+                    await page.goto(partido_url, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(4000)
+                    
+                    # Intentar capturar metadatos básicos
+                    try:
+                        bdis = await page.query_selector_all("bdi")
+                        local = await bdis[0].inner_text() if len(bdis) > 0 else "Local"
+                        visita = await bdis[1].inner_text() if len(bdis) > 1 else "Visitante"
+                    except:
+                        local, visita = "Local", "Visitante"
+                        
+                    # Clic en el botón de estadísticas si está presente
+                    try:
+                        btn_stats = await page.query_selector("button[data-testid='tab-statistics']")
+                        if btn_stats:
+                            await btn_stats.click()
+                            await page.wait_for_timeout(2000)
+                            
+                            # Mapear bloques de métricas
+                            bloques = await page.query_selector_all("div[class*='bg_surface']")
+                            for b in bloques:
+                                filas_stats = await b.query_selector_all("div[class*='d_flex'][class*='flex-d_column']")
+                                for fila in filas_stats:
+                                    try:
+                                        span_metric = await fila.query_selector("span[class*='textStyle_assistive']")
+                                        if span_metric:
+                                            nombre_m = await span_metric.inner_text()
+                                            spans_valores = await fila.query_selector_all("bdi span")
+                                            local_v = await spans_valores[0].inner_text() if len(spans_valores) > 0 else None
+                                            visita_v = await spans_valores[-1].inner_text() if len(spans_valores) > 0 else None
+                                            
+                                            estadisticas.append({
+                                                "Fecha Extracción": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                                "Local": local.strip(), "Visitante": visita.strip(),
+                                                "Métrica": nombre_m.strip(), "Local Valor": local_v, "Visitante Valor": visita_v
+                                            })
+                                    except: continue
+                    except Exception as e:
+                        log_box.warning(f"⚠️ Estructura interna de estadísticas no disponible o cambiada: {e}")
+            
+        except Exception as err:
+            log_box.error(f"❌ Error interno en Playwright: {err}")
+        finally:
+            await browser.close()
+            
+    return estadisticas
+
+# ===========================================
+# 🔄 GESTOR DEL CICLO DEL BUCLE (STREAMLIT)
 # ===========================================
 if ejecutar:
     metric_estado.metric("Estado del Scraper", "🟢 Buscando datos...")
     
-    try:
-        # 🛡️ Paso intermedio de simulación humana: ir a la raíz para generar cookies limpias
-        log_box.write("⏳ Calentando el motor del navegador...")
-        driver.get("https://www.sofascore.com/")
-        time.sleep(3)
+    # Ejecutamos el entorno asíncrono de Playwright
+    nuevas_metricas = asyncio.run(correr_scraping_playwright(url_actual))
+    
+    if nuevas_metricas:
+        df_nuevas = pd.DataFrame(nuevas_metricas)
+        st.session_state.datos_scraping = pd.concat([st.session_state.datos_scraping, df_nuevas], ignore_index=True).drop_duplicates(subset=["Local", "Visitante", "Métrica"])
+        log_box.success("✨ ¡Tabla de datos en vivo actualizada!")
+    else:
+        log_box.info("ℹ️ Ciclo completado sin nuevas filas parseadas.")
         
-        log_box.write(f"🌍 Accediendo a la liga: **{torneo_seleccionado}**...")
-        driver.get(url_actual)
-        
-        # ⏳ Espera explícita para la tabla
-        wait = WebDriverWait(driver, 20)
-        try:
-            # Buscamos cualquier link de equipo válido en la tabla
-            wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/team/')]")))
-        except TimeoutException:
-            log_box.warning("⚠️ Cloudflare o retraso de red detectado. Intentando buscar elementos alternativos...")
-
-        # ⚽ EXTRAER EQUIPOS
-        equipos = driver.find_elements(By.XPATH, "//a[contains(@href, '/team/')]")
-        data_equipos = []
-        
-        for e in equipos:
-            try:
-                enlace = e.get_attribute("href")
-                if 'football/team/' in enlace or '/team/html/' in enlace:
-                    equipo_texto = e.find_element(By.XPATH, ".//span").text.strip()
-                    if equipo_texto and not equipo_texto.isdigit():
-                        data_equipos.append({"equipo": equipo_texto, "enlace": enlace})
-            except:
-                continue
-        
-        if data_equipos:
-            df_eq_temp = pd.DataFrame(data_equipos).drop_duplicates(subset=["equipo"])
-            data_equipos = df_eq_temp.to_dict('records')
-        else:
-            data_equipos = []
-
-        log_box.write(f"✅ ¡Se localizaron **{len(data_equipos)}** equipos únicos!")
-
-        # 🔗 EXTRAER PARTIDOS POR EQUIPO
-        if data_equipos:
-            data_partidos = []
-            # Analizar el primer equipo de la lista para agilizar la prueba visual
-            for d in data_equipos[:1]: 
-                try:
-                    log_box.write(f"⚽ Buscando partidos de: *{d['equipo']}*")
-                    driver.get(d['enlace'])
-                    time.sleep(3)
-                    
-                    secciones = driver.find_elements(By.XPATH, "//div[contains(@class,'card-component')]")
-                    for sec in secciones:
-                        partidos = sec.find_elements(By.XPATH, ".//a[contains(@href, '/match/')]")
-                        for p in partidos:
-                            enlace_partido = p.get_attribute("href")
-                            if enlace_partido:
-                                data_partidos.append({"Equipo Base": d['equipo'], "Enlace Partido": enlace_partido})
-                except:
-                    continue
-
-            if data_partidos:
-                df_partidos = pd.DataFrame(data_partidos).drop_duplicates()
-                log_box.write(f"📋 Enlaces de partidos encontrados: {len(df_partidos)}")
-
-                # 📊 EXTRAER MÉTRICAS
-                estadisticas = []
-                partido_prueba = df_partidos.iloc[0]
-                
-                log_box.write(f"🔎 Extrayendo métricas de partido: {partido_prueba['Enlace Partido']}")
-                driver.get(partido_prueba["Enlace Partido"])
-                time.sleep(3)
-
-                # --- Raspar Información Básica ---
-                try: fecha = driver.find_elements(By.XPATH, "//span[@class='textStyle_display.micro c_neutrals.nLv3 lh_1']")[0].text
-                except: fecha = None
-                try: competicion = driver.find_element(By.XPATH, "//div[contains(@class,'d_flex')]//span[contains(@class,'textStyle_display.micro')]").text
-                except: competicion = None
-                try:
-                    eq_p = driver.find_elements(By.XPATH, "//bdi")
-                    local, visita = eq_p[0].text, eq_p[1].text
-                except: local, visita = "Local", "Visitante"
-
-                # --- Extraer Estadísticas ---
-                try:
-                    btn_stats = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, "//button[contains(@data-testid, 'tab-statistics')]"))
-                    )
-                    btn_stats.click()
-                    time.sleep(2)
-                    
-                    summary = driver.find_elements(By.XPATH, "//div[contains(@class, 'bg_surface')]")
-                    for s in summary:
-                        stats = s.find_elements(By.XPATH, ".//div[contains(@class, 'd_flex') and contains(@class, 'flex-d_column')]")
-                        for st in stats:
-                            try:
-                                nombre = st.find_element(By.XPATH, ".//span[contains(@class, 'textStyle_assistive')]").text
-                                local_val = st.find_element(By.XPATH, ".//bdi[1]/span").text
-                                visita_val = st.find_element(By.XPATH, ".//bdi[last()]/span").text
-                                
-                                estadisticas.append({
-                                    "Fecha Extracción": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                    "Fecha Partido": fecha, "Competición": competicion, "Local": local, "Visitante": visita,
-                                    "Métrica": nombre, "Local Valor": local_val, "Visitante Valor": visita_val
-                                })
-                            except: continue
-                except:
-                    pass
-
-                if estadisticas:
-                    df_nuevos_datos = pd.DataFrame(estadisticas)
-                    st.session_state.datos_scraping = pd.concat([st.session_state.datos_scraping, df_nuevos_datos], ignore_index=True).drop_duplicates(subset=["Fecha Partido", "Local", "Visitante", "Métrica"])
-                    log_box.success("✨ ¡Métricas recopiladas con éxito!")
-            else:
-                log_box.warning("⚠️ No se pudieron estructurar sub-enlaces de partidos.")
-        else:
-            log_box.error("❌ La estructura fue bloqueada por el Host. Reintentando en el próximo ciclo...")
-            
-    except Exception as e:
-        log_box.error(f"❌ Error en la ejecución: {e}")
-
-    # Forzar actualización en pantalla
+    # Re-pitar dataframe
     tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
     metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
     
-    st.write("⏱️ Esperando 10 segundos para iniciar un nuevo barrido automático...")
+    st.write("⏱️ Esperando 10 segundos para reiniciar ciclo con Playwright...")
     time.sleep(10)
     st.rerun()
-
 else:
     metric_estado.metric("Estado del Scraper", "🔴 Detenido")
     st.info("Utiliza el switch de la barra izquierda para arrancar el scraping continuo.")
