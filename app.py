@@ -25,15 +25,16 @@ st.write("Esta versión ejecuta el scraping en la nube y muestra los resultados 
 def iniciar_driver():
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
-    options.add_argument("--headless")                # OBLIGATORIO EN LA NUBE (Sin interfaz gráfica)
+    options.add_argument("--headless")                # Obligatorio en la nube
     options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")               # OBLIGATORIO EN LINUX/NUBE
-    options.add_argument("--disable-dev-shm-usage")    # EVITA QUE SE QUEDE SIN MEMORIA RAM EN EL SERVIDOR
+    options.add_argument("--no-sandbox")               # Obligatorio en Linux
+    options.add_argument("--disable-dev-shm-usage")    # Evita caídas de memoria RAM
     
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
+    # 📌 Configuración optimizada para Linux/Streamlit Cloud apuntando al paquete nativo
+    options.binary_location = "/usr/bin/chromium"
+    service = Service("/usr/bin/chromium-driver")
+    
+    driver = webdriver.Chrome(service=service, options=options)
     return driver
 
 try:
