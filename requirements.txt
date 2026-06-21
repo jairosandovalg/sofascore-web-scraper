@@ -1,4 +1,5 @@
 streamlit
 pandas
 numpy
-selenium>=4.10.0
+playwright
+playwright-stealth
