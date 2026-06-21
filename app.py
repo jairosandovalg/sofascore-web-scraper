@@ -1,128 +1,142 @@
 import streamlit as st
 import pandas as pd
-import os
-import json
-import subprocess
-from playwright.sync_api import sync_playwright
-
-# ===========================================
-# 📦 AUTO-INSTALACIÓN DE NAVEGADORES
-# ===========================================
-try:
-    import playwright
-except ImportError:
-    pass
-
-@st.cache_resource
-def verificar_e_instalar_browsers():
-    try:
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-        return "✅ Motor de navegación validado en el sistema."
-    except Exception as e:
-        return f"⚠️ Nota de inicialización: {e}"
-
-status_instalacion = verificar_e_instalar_browsers()
+import requests
+import re
+import time
+from datetime import datetime
 
 # ===========================================
 # 💻 CONFIGURACIÓN DE LA PÁGINA STREAMLIT
 # ===========================================
-st.set_page_config(page_title="Extractor Live API", page_icon="⚽", layout="wide")
-st.title("⚽ Fase 1: Extracción por Intercepción de Tráfico (Anti-403)")
-st.info(status_instalacion)
+st.set_page_config(page_title="Extractor Live Flashscore", page_icon="⚽", layout="wide")
+st.title("⚽ Fase 1: Extracción en Vivo Vía API Flashscore (Inmune a 403)")
+st.write("Cambiamos el puente de comunicación hacia los servidores de Flashscore para evadir las restricciones de Cloudflare.")
 
-# Usamos la URL raíz internacional, que tiene menor tasa de bloqueo inicial
-url_objetivo = st.text_input("URL de Acceso Base:", "https://www.sofascore.com/es/")
-btn_conectar = st.button("🛰️ Interceptar API de Partidos en Vivo")
+# --- BARRA LATERAL ---
+st.sidebar.header("⚙️ Panel de Control")
+ejecutar = st.sidebar.toggle("▶️ Iniciar Monitoreo en Vivo (Loop 10s)", value=False)
+
+# --- CUADRO DE MANDOS ---
+col1, col2 = st.columns(2)
+metric_partidos = col1.empty()
+metric_estado = col2.empty()
+
+log_box = st.container(border=True)
+log_box.write("### 📄 Logs de Conexión en Directo")
+
+st.write("### 📊 Partidos en Tiempo Real Detectados")
+tabla_datos = st.empty()
 
 # ===========================================
-# ⚡ EJECUCIÓN SÍNCRONA Y FILTRADO DE RED
+# 🚀 FUNCIÓN DE EXTRACCIÓN NATIVA (FLASHCORE FEED)
 # ===========================================
-if btn_conectar:
-    st.write("⏳ Levantando contenedor de navegación camuflado...")
-    json_capturado = None
+def capturar_flashscore_live():
+    # URL del feed público en vivo que consume la app web de Flashscore
+    # Usamos la variante continental para maximizar compatibilidad en servidores internacionales
+    url = "https://m.flashscore.com/x/feed/d_live_1_es_1"
+    
+    # 🕵️‍♂️ Máscara humana completa obligatoria para saltar bloqueos de Data Centers
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "X-AsyncRequest": "true",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://m.flashscore.com/",
+        "Accept-Language": "es-ES,es;q=0.9"
+    }
     
     try:
-        with sync_playwright() as p:
-            # Forzamos argumentos que deshabilitan la detección automatizada
-            browser = p.chromium.launch(
-                headless=True, 
-                args=[
-                    "--no-sandbox", 
-                    "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled"
-                ]
-            )
-            
-            # Forzamos una huella digital (fingerprint) de escritorio común
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                viewport={"width": 1366, "height": 768},
-                locale="es-ES",
-                timezone_id="America/Lima"
-            )
-            
-            page = context.new_page()
-            
-            # 🧠 FUNCIÓN DE INTERCEPCIÓN: Escucha los datos puros que viajan por detrás
-            def capturar_trafico(response):
-                global json_capturado
-                # Filtramos la URL de la API interna de Sofascore que contiene los eventos en directo
-                if "api/v1/sport/football/events/live" in response.url:
-                    try:
-                        text_data = response.text()
-                        json_capturado = json.loads(text_data)
-                        st.success("🎯 ¡API de eventos en directo interceptada con éxito desde el tráfico de red!")
-                    except Exception as json_err:
-                        pass
-
-            # Activamos el radar de respuestas de red
-            page.on("response", capturar_trafico)
-            
-            st.write(f"🌍 Conectando de forma silenciosa a `{url_objetivo}` ...")
-            page.goto(url_objetivo, timeout=60000, wait_until="networkidle")
-            
-            # Pausa humana de 5 segundos para permitir el flujo completo de peticiones asíncronas
-            page.wait_for_timeout(5000)
-            
-            browser.close()
-            
-    except Exception as err:
-        st.error(f"❌ Error en el puente de comunicación: {err}")
-
-    # ===========================================
-    # 📊 PROCESAMIENTO Y RENDERIZADO DE RESULTADOS
-    # ===========================================
-    st.write("### 🎛️ Resultado del Análisis de Red")
-    
-    if json_capturado and "events" in json_capturado:
-        partidos_en_vivo = []
+        log_box.write("📡 Enviando petición de datos al servidor central de Flashscore...")
+        response = requests.get(url, headers=headers, timeout=15)
         
-        # Parseamos el JSON puro que obtuvimos de la red
-        for evento in json_capturado["events"]:
-            try:
-                id_evento = evento.get("id")
-                torneo = evento.get("tournament", {}).get("name", "Liga")
-                local = evento.get("homeTeam", {}).get("name", "Local")
-                visita = evento.get("awayTeam", {}).get("name", "Visitante")
-                score_l = evento.get("homeScore", {}).get("current", 0)
-                score_v = evento.get("awayScore", {}).get("current", 0)
-                minuto = evento.get("status", {}).get("description", "Live")
-                
-                partidos_en_vivo.append({
-                    "ID Evento": id_evento,
-                    "Competición": torneo,
-                    "Partido en Directo": f"🏟️ {local} ({score_l}) vs ({score_v}) {visita}",
-                    "Minuto / Estado": minuto
-                })
-            except:
-                continue
-        
-        if partidos_en_vivo:
-            df_live = pd.DataFrame(partidos_en_vivo)
-            st.write(f"✅ Se encontraron **{len(df_live)}** partidos activos en este instante.")
-            st.dataframe(df_live, use_container_width=True, hide_index=True)
+        if response.status_code == 200:
+            log_box.success("🎯 ¡Paquete de datos en vivo descargado correctamente!")
+            return response.text
+        elif response.status_code == 403:
+            log_box.error("❌ Código 403: Acceso denegado por el Host actual.")
+            return None
         else:
-            st.warning("⚠️ El JSON se capturó vacío o no contiene eventos activos de fútbol en este momento.")
+            log_box.warning(f"⚠️ Servidor respondió con estado inusual: {response.status_code}")
+            return None
+    except Exception as e:
+        log_box.error(f"❌ Error crítico de conexión: {e}")
+        return None
+
+# ===========================================
+# 🔄 PROCESADOR DEL FEED DE TEXTO (PARSER)
+# ===========================================
+def procesar_feed(feed_texto):
+    if not feed_texto:
+        return []
+        
+    partidos_live = []
+    
+    # El feed de Flashscore divide las ligas y partidos usando bloques delimitados por '~'
+    bloques = feed_texto.split("~")
+    liga_actual = "Competición Internacional"
+    
+    for bloque in bloques:
+        try:
+            # 🏆 Si el bloque define una competición (Empieza con TO)
+            if bloque.startswith("TO"):
+                match_liga = re.search(r"DN欄([^]+)", bloque)
+                if match_liga:
+                    liga_actual = match_liga.group(1).replace("欄", "").strip()
             
+            # ⚽ Si el bloque define un partido activo (Empieza con AA)
+            elif bloque.startswith("AA"):
+                # Extraemos el ID único del partido (clave para alertas futuras)
+                id_match = bloque.split("欄")[0].replace("AA÷", "").strip()
+                
+                # Expresiones regulares adaptadas para capturar nombres y marcadores mutables
+                partes = bloque.split("欄")
+                
+                local = None
+                visita = None
+                goles_l = "0"
+                goles_v = "0"
+                minuto = "Live"
+                
+                for p in partes:
+                    if p.startswith("AE÷"): local = p.replace("AE÷", "")
+                    elif p.startswith("AF÷"): visita = p.replace("AF÷", "")
+                    elif p.startswith("AG÷"): goles_l = p.replace("AG÷", "")
+                    elif p.startswith("AH÷"): goles_v = p.replace("AH÷", "")
+                    elif p.startswith("AM÷"): minuto = p.replace("AM÷", "")
+                
+                if local and visita:
+                    partidos_live.append({
+                        "ID Partido": id_match,
+                        "Competición": liga_actual,
+                        "Partido": f"🏟️ {local} ({goles_l}) vs ({goles_v}) {visita}",
+                        "Tiempo / Minuto": minuto.strip()
+                    })
+        except:
+            continue
+            
+    return partidos_live
+
+# ===========================================
+# 🔄 BUCLE PRINCIPAL DE STREAMLIT
+# ===========================================
+if ejecutar:
+    metric_estado.metric("Estado de Red", "🟢 Escaneando API...")
+    
+    # Descargar y parsear
+    raw_feed = capturar_flashscore_live()
+    lista_partidos = procesar_feed(raw_feed)
+    
+    if lista_partidos:
+        df_flash = pd.DataFrame(lista_partidos)
+        metric_partidos.metric("Eventos en Directo Encontrados", len(df_flash))
+        tabla_datos.dataframe(df_flash, use_container_width=True, hide_index=True)
     else:
-        st.error("❌ No se detectó la llamada de la API en este ciclo. Cloudflare mantiene el bloqueo 403. Espera unos segundos e intenta reconectar.")
+        metric_partidos.metric("Eventos en Directo Encontrados", 0)
+        tabla_datos.warning("⚠️ No hay registros cargados en este bloque o el servidor está en mantenimiento.")
+        
+    st.write("⏱️ Esperando 10 segundos para actualizar métricas en vivo...")
+    time.sleep(10)
+    st.rerun()
+
+else:
+    metric_estado.metric("Estado de Red", "🔴 Apagado")
+    st.info("Activa el interruptor de la izquierda para enlazar el lector de anomalías a los partidos en juego.")
