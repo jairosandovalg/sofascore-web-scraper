@@ -7,7 +7,6 @@ import selenium
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException
 import streamlit as st
 
@@ -19,7 +18,7 @@ st.title("⚽ Prueba de Web Scraping en Tiempo Real (Sofascore)")
 st.write("Esta versión ejecuta el scraping en la nube y muestra los resultados directamente en la pantalla usando la memoria de Streamlit.")
 
 # ===========================================
-# ⚙️ INICIALIZACIÓN DE SELENIUM (OPTIMIZADO PARA LA NUBE)
+# ⚙️ INICIALIZACIÓN DE SELENIUM (PAQUETES NATIVOS DE LINUX)
 # ===========================================
 @st.cache_resource
 def iniciar_driver():
@@ -30,7 +29,7 @@ def iniciar_driver():
     options.add_argument("--no-sandbox")               # Obligatorio en Linux
     options.add_argument("--disable-dev-shm-usage")    # Evita caídas de memoria RAM
     
-    # 📌 Configuración optimizada para Linux/Streamlit Cloud apuntando al paquete nativo
+    # 📌 Forzamos el uso emparejado de Chromium y ChromeDriver instalados mediante packages.txt
     options.binary_location = "/usr/bin/chromium"
     service = Service("/usr/bin/chromium-driver")
     
@@ -162,7 +161,7 @@ if ejecutar:
                             estadisticas.append({
                                 "Fecha Extracción": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 "Fecha Partido": fecha, "Competición": competicion, "Local": local, "Visitante": visita,
-                                "Métrica": nombre, "Local Valor": local_val, "Visitante Valor": visita_val
+                                "Métrica": ... if 'nombre' not in locals() else nombre, "Local Valor": local_val, "Visitante Valor": visita_val
                             })
                         except: continue
             except:
