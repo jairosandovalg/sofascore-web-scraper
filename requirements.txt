@@ -1,0 +1,7 @@
+streamlit
+pandas
+numpy
+selenium
+webdriver-manager
+sqlalchemy
+pyodbc
