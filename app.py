@@ -32,7 +32,7 @@ url_objetivo = st.text_input("URL de Acceso:", "https://www.flashscore.com/")
 btn_conectar = st.button("🔌 Conectar, Pulsar Filtro 'LIVE' y Tomar Captura")
 
 # ===========================================
-# ⚡ EJECUCIÓN SÍNCRONA CON CLIC TRASPASA-ANUNCIOS
+# ⚡ EJECUCIÓN SÍNCRONA CON DISPARO JAVASCRIPT NATIVO
 # ===========================================
 if btn_conectar:
     st.write("⏳ Levantando navegador en segundo plano...")
@@ -61,29 +61,31 @@ if btn_conectar:
             page.wait_for_timeout(4000) 
             
             log_box = st.container(border=True)
-            log_box.write("🔍 Localizando el botón exacto de 'LIVE'...")
+            log_box.write("🔍 Localizando el botón dinámico conteniendo 'LIVE'...")
             
-            # Buscamos un div que tenga la clase de filtro y contenga exactamente el texto 'LIVE'
-            boton_live = page.locator("div.filters__text:has-text('LIVE')").first
+            # Selector flexible: busca cualquier div con clase 'filters__text' que tenga la palabra 'LIVE'
+            locator_flexible = page.locator("div[class*='filters__text']:has-text('LIVE')").first
             
-            if boton_live.count() > 0:
-                log_box.success("🎯 ¡Elemento objetivo localizado en la interfaz!")
+            if locator_flexible.count() > 0:
+                texto_detectado = locator_flexible.inner_text()
+                log_box.success(f"🎯 ¡Elemento localizado! Texto real en pantalla: '{texto_detectado}'")
                 
-                # 🔥 CLIC FORZADO (force=True): Traspasa banners de publicidad, anuncios o cookies bypassando el bloqueo
-                boton_live.click(force=True)
+                # 🔥 DISPARO POR JAVASCRIPT DIRECTO: Traspasa problemas de 'Element is not visible'
+                # Obliga al navegador a ejecutar el evento de clic directamente en el nodo del DOM
+                locator_flexible.dispatch_event("click")
                 
-                log_box.write("🚀 Clic inyectado de forma directa. Esperando refresco de la cartelera...")
-                page.wait_for_timeout(5000)
+                log_box.write("🚀 Evento JavaScript 'click' inyectado con éxito. Esperando actualización de partidos...")
+                page.wait_for_timeout(6000) # Tiempo para que cargue la nueva lista en vivo
             else:
-                log_box.warning("⚠️ Selector específico no hallado. Intentando respaldo por texto crudo...")
-                page.get_by_text("LIVE", exact=True).first.click(force=True)
-                page.wait_for_timeout(5000)
+                log_box.warning("⚠️ No se encontró el selector flexible. Intentando click por texto crudo...")
+                page.get_by_text("LIVE Games", exact=False).first.dispatch_event("click")
+                page.wait_for_timeout(6000)
 
             st.success("🎉 Captura de pantalla procesada con éxito.")
             
-            # Tomamos la captura
+            # Tomamos la captura para ver los partidos en vivo reales cargados en la nube
             screenshot_bytes = page.screenshot(full_page=False)
-            st.image(screenshot_bytes, caption="Cartelera LIVE en tiempo real procesada sin anuncios", use_container_width=True)
+            st.image(screenshot_bytes, caption="Cartelera LIVE en tiempo real procesada por inyección JS", use_container_width=True)
             
             browser.close()
             
