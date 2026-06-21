@@ -17,24 +17,37 @@ import streamlit as st
 # ===========================================
 st.set_page_config(page_title="Sofascore Scraper Pro", page_icon="⚽", layout="wide")
 st.title("⚽ Extractor de Estadísticas en Tiempo Real (Sofascore)")
-st.write("Esta versión utiliza esperas explícitas optimizadas tanto para ejecución local como para la nube.")
+st.write("Esta versión incorpora configuraciones avanzadas anti-bloqueo (User-Agent y evasión de Cloudflare) para la nube.")
 
 # ===========================================
-# ⚙️ INICIALIZACIÓN DE SELENIUM (NATIVO / NUBE)
+# ⚙️ INICIALIZACIÓN DE SELENIUM (MEDIDAS ANTI-DETECCIÓN)
 # ===========================================
 @st.cache_resource
 def iniciar_driver():
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
-    options.add_argument("--headless=new")             # Formato moderno para headless obligatorio en la nube
+    options.add_argument("--headless=new")             
     options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")               # Requerido para entornos Linux de Streamlit Cloud
-    options.add_argument("--disable-dev-shm-usage")    # Evita problemas de memoria compartida
+    options.add_argument("--no-sandbox")               
+    options.add_argument("--disable-dev-shm-usage")    
     options.add_argument("--disable-extensions")
-    options.add_argument("--blink-settings=imagesEnabled=false") # Desactiva imágenes para mayor velocidad
+    
+    # 🕵️‍♂️ MÁSCARA ANTI-BOTS: Definimos un agente de usuario de una computadora real
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    
+    # ❌ Desactivamos la propiedad que le avisa a las webs que estamos usando Selenium
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
     
     service = Service()
     driver = webdriver.Chrome(service=service, options=options)
+    
+    # Inyectamos un script para borrar rastro de automatización en Javascript
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    })
+    
     return driver
 
 try:
@@ -44,7 +57,7 @@ except Exception as e:
     st.stop()
 
 # ===========================================
-# 🧠 MEMORIA TEMPORAL DE LA SESIÓN (STREAMLIT)
+# 🧠 MEMORIA TEMPORAL DE LA SESIÓN
 # ===========================================
 if "datos_scraping" not in st.session_state:
     st.session_state.datos_scraping = pd.DataFrame()
@@ -80,7 +93,6 @@ log_box.write("### 📄 Logs del Navegador en la Nube")
 st.write("### 📊 Datos Extraídos en Vivo")
 tabla_datos = st.empty()
 
-# Mostrar datos en pantalla
 tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
 metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
 
@@ -91,54 +103,57 @@ if ejecutar:
     metric_estado.metric("Estado del Scraper", "🟢 Buscando datos...")
     
     try:
+        # 🛡️ Paso intermedio de simulación humana: ir a la raíz para generar cookies limpias
+        log_box.write("⏳ Calentando el motor del navegador...")
+        driver.get("https://www.sofascore.com/")
+        time.sleep(3)
+        
         log_box.write(f"🌍 Accediendo a la liga: **{torneo_seleccionado}**...")
         driver.get(url_actual)
         
-        # ⏳ ESPERA EXPLÍCITA: Esperar hasta 15 segundos a que aparezcan los enlaces de equipos
-        wait = WebDriverWait(driver, 15)
+        # ⏳ Espera explícita para la tabla
+        wait = WebDriverWait(driver, 20)
         try:
-            wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'football/team/')]")))
+            # Buscamos cualquier link de equipo válido en la tabla
+            wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/team/')]")))
         except TimeoutException:
-            log_box.warning("⚠️ La página tardó demasiado en cargar la estructura de equipos.")
+            log_box.warning("⚠️ Cloudflare o retraso de red detectado. Intentando buscar elementos alternativos...")
 
         # ⚽ EXTRAER EQUIPOS
-        equipos = driver.find_elements(By.XPATH, "//a[contains(@href, 'football/team/')]")
+        equipos = driver.find_elements(By.XPATH, "//a[contains(@href, '/team/')]")
         data_equipos = []
         
         for e in equipos:
             try:
-                # Extrae el texto interno del span de manera flexible (evita clases CSS rígidas)
-                equipo_texto = e.find_element(By.XPATH, ".//span").text.strip()
                 enlace = e.get_attribute("href")
-                
-                # Filtrar números de posición y textos vacíos
-                if equipo_texto and not equipo_texto.isdigit() and enlace:
-                    data_equipos.append({"equipo": equipo_texto, "enlace": enlace})
+                if 'football/team/' in enlace or '/team/html/' in enlace:
+                    equipo_texto = e.find_element(By.XPATH, ".//span").text.strip()
+                    if equipo_texto and not equipo_texto.isdigit():
+                        data_equipos.append({"equipo": equipo_texto, "enlace": enlace})
             except:
                 continue
         
-        # Remover duplicados del DOM
-        df_eq_temp = pd.DataFrame(data_equipos).drop_duplicates(subset=["equipo"])
-        data_equipos = df_eq_temp.to_dict('records') if not df_eq_temp.empty else []
+        if data_equipos:
+            df_eq_temp = pd.DataFrame(data_equipos).drop_duplicates(subset=["equipo"])
+            data_equipos = df_eq_temp.to_dict('records')
+        else:
+            data_equipos = []
 
         log_box.write(f"✅ ¡Se localizaron **{len(data_equipos)}** equipos únicos!")
 
-        # 🔗 EXTRAER PARTIDOS POR EQUIPO (Limitado a los 2 primeros para agilizar el loop de 10s)
+        # 🔗 EXTRAER PARTIDOS POR EQUIPO
         if data_equipos:
             data_partidos = []
-            for d in data_equipos[:2]: 
+            # Analizar el primer equipo de la lista para agilizar la prueba visual
+            for d in data_equipos[:1]: 
                 try:
                     log_box.write(f"⚽ Buscando partidos de: *{d['equipo']}*")
                     driver.get(d['enlace'])
-                    
-                    # Espera a que los partidos carguen en el perfil del equipo
-                    WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/football/match/')]"))
-                    )
+                    time.sleep(3)
                     
                     secciones = driver.find_elements(By.XPATH, "//div[contains(@class,'card-component')]")
                     for sec in secciones:
-                        partidos = sec.find_elements(By.XPATH, ".//a[contains(@href, '/football/match/')]")
+                        partidos = sec.find_elements(By.XPATH, ".//a[contains(@href, '/match/')]")
                         for p in partidos:
                             enlace_partido = p.get_attribute("href")
                             if enlace_partido:
@@ -148,39 +163,35 @@ if ejecutar:
 
             if data_partidos:
                 df_partidos = pd.DataFrame(data_partidos).drop_duplicates()
-                log_box.write(f"📋 Analizando enlaces de partidos... Encontrados en total: {len(df_partidos)}")
+                log_box.write(f"📋 Enlaces de partidos encontrados: {len(df_partidos)}")
 
-                # 📊 EXTRAER MÉTRICAS DEL PRIMER PARTIDO DISPONIBLE
+                # 📊 EXTRAER MÉTRICAS
                 estadisticas = []
                 partido_prueba = df_partidos.iloc[0]
                 
                 log_box.write(f"🔎 Extrayendo métricas de partido: {partido_prueba['Enlace Partido']}")
                 driver.get(partido_prueba["Enlace Partido"])
-                
-                try:
-                    WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, "//bdi")))
-                except:
-                    pass
+                time.sleep(3)
 
                 # --- Raspar Información Básica ---
                 try: fecha = driver.find_elements(By.XPATH, "//span[@class='textStyle_display.micro c_neutrals.nLv3 lh_1']")[0].text
                 except: fecha = None
-                try: competicion = driver.find_element(By.XPATH, "//div[contains(@class,'d_flex') and contains(@class,'hover:bg_surface.s2')]//span[contains(@class,'textStyle_display.micro')]").text
+                try: competicion = driver.find_element(By.XPATH, "//div[contains(@class,'d_flex')]//span[contains(@class,'textStyle_display.micro')]").text
                 except: competicion = None
                 try:
-                    eq_p = driver.find_elements(By.XPATH, "//bdi[contains(@class,'textStyle_display.medium')]")
+                    eq_p = driver.find_elements(By.XPATH, "//bdi")
                     local, visita = eq_p[0].text, eq_p[1].text
                 except: local, visita = "Local", "Visitante"
 
-                # --- Navegar a la pestaña de estadísticas internas ---
+                # --- Extraer Estadísticas ---
                 try:
-                    btn_stats = WebDriverWait(driver, 8).until(
+                    btn_stats = WebDriverWait(driver, 5).until(
                         EC.element_to_be_clickable((By.XPATH, "//button[contains(@data-testid, 'tab-statistics')]"))
                     )
                     btn_stats.click()
                     time.sleep(2)
                     
-                    summary = driver.find_elements(By.XPATH, "//div[contains(@class, 'bg_surface') and contains(@class, 's1')]")
+                    summary = driver.find_elements(By.XPATH, "//div[contains(@class, 'bg_surface')]")
                     for s in summary:
                         stats = s.find_elements(By.XPATH, ".//div[contains(@class, 'd_flex') and contains(@class, 'flex-d_column')]")
                         for st in stats:
@@ -196,17 +207,16 @@ if ejecutar:
                                 })
                             except: continue
                 except:
-                    log_box.warning("⚠️ Pestaña de estadísticas detalladas no disponible en este evento.")
+                    pass
 
-                # Acumular en st.session_state
                 if estadisticas:
                     df_nuevos_datos = pd.DataFrame(estadisticas)
                     st.session_state.datos_scraping = pd.concat([st.session_state.datos_scraping, df_nuevos_datos], ignore_index=True).drop_duplicates(subset=["Fecha Partido", "Local", "Visitante", "Métrica"])
                     log_box.success("✨ ¡Métricas recopiladas con éxito!")
             else:
-                log_box.warning("⚠️ No se encontraron partidos activos para los equipos analizados.")
+                log_box.warning("⚠️ No se pudieron estructurar sub-enlaces de partidos.")
         else:
-            log_box.error("❌ Falló la recolección de equipos. La página no devolvió la tabla.")
+            log_box.error("❌ La estructura fue bloqueada por el Host. Reintentando en el próximo ciclo...")
             
     except Exception as e:
         log_box.error(f"❌ Error en la ejecución: {e}")
@@ -215,7 +225,6 @@ if ejecutar:
     tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
     metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
     
-    # Pausa e inicio automático del loop
     st.write("⏱️ Esperando 10 segundos para iniciar un nuevo barrido automático...")
     time.sleep(10)
     st.rerun()
