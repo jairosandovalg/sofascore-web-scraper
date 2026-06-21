@@ -54,10 +54,7 @@ if "datos_scraping" not in st.session_state:
 # 🌍 URLS DE TORNEOS
 # ===========================================
 urls_torneos = {
-    "Mozzart Bet Superliga" : "https://www.sofascore.com/es/torneo/futbol/serbia/mozzart-bet-superliga/210#id:76909",
-    "Premier League": "https://www.sofascore.com/es/torneo/futbol/england/premier-league/17#id:76986",
-    "La Liga": "https://www.sofascore.com/es/torneo/futbol/spain/laliga/8#id:77559",
-    "Liga 1 (Perú)": "https://www.sofascore.com/es/torneo/futbol/peru/liga-1/406#id:70962"
+    "Copa Mundial" : "https://www.sofascore.com/es/football/tournament/world/world-championship/16#id:58210"
 }
 
 # --- BARRA LATERAL (SIDEBAR) ---
