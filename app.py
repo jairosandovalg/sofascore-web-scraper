@@ -16,19 +16,19 @@ import streamlit as st
 # ===========================================
 st.set_page_config(page_title="Sofascore Scraper Test", page_icon="⚽", layout="wide")
 st.title("⚽ Prueba de Web Scraping en Tiempo Real (Sofascore)")
-st.write("Esta versión ejecuta el scraping y muestra los resultados directamente en la pantalla sin usar bases de datos.")
+st.write("Esta versión ejecuta el scraping en la nube y muestra los resultados directamente en la pantalla usando la memoria de Streamlit.")
 
 # ===========================================
-# ⚙️ INICIALIZACIÓN DE SELENIUM (CACHED)
+# ⚙️ INICIALIZACIÓN DE SELENIUM (OPTIMIZADO PARA LA NUBE)
 # ===========================================
 @st.cache_resource
 def iniciar_driver():
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
-    options.add_argument("--headless")  # Corre en segundo plano sin abrir ventanas molestas
+    options.add_argument("--headless")                # OBLIGATORIO EN LA NUBE (Sin interfaz gráfica)
     options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")               # OBLIGATORIO EN LINUX/NUBE
+    options.add_argument("--disable-dev-shm-usage")    # EVITA QUE SE QUEDE SIN MEMORIA RAM EN EL SERVIDOR
     
     driver = webdriver.Chrome(
         service=Service(ChromeDriverManager().install()),
@@ -39,13 +39,12 @@ def iniciar_driver():
 try:
     driver = iniciar_driver()
 except Exception as e:
-    st.error(f"Error al inicializar Chrome: {e}")
+    st.error(f"Error al inicializar Chrome en el servidor: {e}")
     st.stop()
 
 # ===========================================
-# 🧠 MEMORÍA TEMPORAL DE STREAMLIT
+# 🧠 MEMORIA TEMPORAL DE LA SESIÓN
 # ===========================================
-# Creamos un DataFrame vacío en la memoria de la sesión si no existe
 if "datos_scraping" not in st.session_state:
     st.session_state.datos_scraping = pd.DataFrame()
 
@@ -59,42 +58,42 @@ urls_torneos = {
     "Liga 1 (Perú)": "https://www.sofascore.com/es/torneo/futbol/peru/liga-1/406#id:70962"
 }
 
-# Sidebar
+# --- BARRA LATERAL (SIDEBAR) ---
+st.sidebar.header("⚙️ Panel de Control")
 torneo_seleccionado = st.sidebar.selectbox("Selecciona un Torneo:", list(urls_torneos.keys()))
 url_actual = urls_torneos[torneo_seleccionado]
 
 ejecutar = st.sidebar.toggle("▶️ Iniciar Web Scraping (Loop 10s)", value=False)
 
-# Botón para limpiar la pantalla
-if st.sidebar.button("🧹 Borrar Datos Mostrados"):
+if st.sidebar.button("🧹 Borrar Datos de la Pantalla"):
     st.session_state.datos_scraping = pd.DataFrame()
     st.rerun()
 
-# Dashboard principal
+# --- CUADRO DE MANDOS PRINCIPAL (DASHBOARD) ---
 col1, col2 = st.columns(2)
 metric_filas = col1.empty()
 metric_estado = col2.empty()
 
 log_box = st.container(border=True)
-log_box.write("### 📄 Logs del Navegador")
+log_box.write("### 📄 Logs del Navegador en la Nube")
 
 st.write("### 📊 Datos Extraídos en Vivo")
-tabla_datos = st.empty() # Contenedor para la tabla de resultados
+tabla_datos = st.empty()
 
-# Mostrar datos acumulados actualmente
-tabla_datos.dataframe(st.session_state.datos_scraping)
+# Renderizado inicial del DataFrame en memoria
+tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
 metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
 
 # ===========================================
-# 🔄 BUCLE DE SCRAPING (CADA 10 SEGUNDOS)
+# 🔄 BUCLE DE EJECUCIÓN (REFRESCO CADA 10 SEGUNDOS)
 # ===========================================
 if ejecutar:
-    metric_estado.metric("Estado", "🟢 Buscando datos...")
+    metric_estado.metric("Estado del Scraper", "🟢 Buscando datos...")
     
     try:
-        log_box.write(f"🌍 Accediendo a la liga: {torneo_seleccionado}...")
+        log_box.write(f"🌍 Accediendo a la liga: **{torneo_seleccionado}**...")
         driver.get(url_actual)
-        time.sleep(3)
+        time.sleep(4)
         
         # ⚽ EXTRAER EQUIPOS
         equipos = driver.find_elements(By.XPATH, "//a[contains(@href, 'football/team/')]")
@@ -107,9 +106,9 @@ if ejecutar:
             except:
                 continue
         
-        log_box.write(f"✅ Se encontraron {len(data_equipos)} equipos.")
+        log_box.write(f"✅ Se localizaron {len(data_equipos)} equipos en la tabla.")
 
-        # 🔗 EXTRAER PARTIDOS (Limitado a los 2 primeros equipos para que la prueba sea rápida)
+        # 🔗 EXTRAER PARTIDOS (Limitado a los 2 primeros equipos para agilizar pruebas en la nube)
         data_partidos = []
         for d in data_equipos[:2]: 
             try:
@@ -125,17 +124,17 @@ if ejecutar:
 
         if data_partidos:
             df_partidos = pd.DataFrame(data_partidos).drop_duplicates()
-            log_box.write(f"📋 Analizando {len(df_partidos)} enlaces de partidos...")
+            log_box.write(f"📋 Analizando enlaces de partidos... Encontrados: {len(df_partidos)}")
 
-            # 📊 EXTRAER DATOS DEL PRIMER PARTIDO DETECTADO COMO PRUEBA
+            # 📊 EXTRAER MÉTRICAS INTERNAS DEL PRIMER PARTIDO DISPONIBLE
             estadisticas = []
-            partido_prueba = df_partidos.iloc[0] # Tomamos el primero para ver que funcione el scraping interno
+            partido_prueba = df_partidos.iloc[0]
             
             log_box.write(f"🔎 Extrayendo métricas de: {partido_prueba['Enlace Partido']}")
             driver.get(partido_prueba["Enlace Partido"])
-            time.sleep(3)
+            time.sleep(4)
 
-            # --- Raspar info básica ---
+            # --- Raspar Información Básica ---
             try: fecha = driver.find_elements(By.XPATH, "//span[@class='textStyle_display.micro c_neutrals.nLv3 lh_1']")[0].text
             except: fecha = None
             try: competicion = driver.find_element(By.XPATH, "//div[contains(@class,'d_flex') and contains(@class,'hover:bg_surface.s2')]//span[contains(@class,'textStyle_display.micro')]").text
@@ -145,7 +144,7 @@ if ejecutar:
                 local, visita = eq_p[0].text, eq_p[1].text
             except: local, visita = "Local", "Visitante"
 
-            # --- Intentar raspar algunas estadísticas generales si la pestaña existe ---
+            # --- Navegar a la pestaña de estadísticas internas ---
             try:
                 driver.find_element(By.XPATH, "//button[contains(@data-testid, 'tab-statistics')]").click()
                 time.sleep(2)
@@ -160,32 +159,32 @@ if ejecutar:
                             visita_val = st.find_element(By.XPATH, ".//bdi[last()]/span").text
                             
                             estadisticas.append({
-                                "Fecha": fecha, "Competición": competicion, "Local": local, "Visitante": visita,
+                                "Fecha Extracción": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "Fecha Partido": fecha, "Competición": competicion, "Local": local, "Visitante": visita,
                                 "Métrica": nombre, "Local Valor": local_val, "Visitante Valor": visita_val
                             })
                         except: continue
             except:
-                log_box.warning("⚠️ Pestaña de estadísticas no disponible o diferente formato.")
+                log_box.warning("⚠️ Pestaña de estadísticas no disponible en este evento por el momento.")
 
-            # Si logramos raspar algo, lo acumulamos en la memoria de Streamlit
+            # Acumular en st.session_state si se obtuvieron datos nuevos
             if estadisticas:
                 df_nuevos_datos = pd.DataFrame(estadisticas)
-                # Concatenamos los nuevos datos a los que ya teníamos guardados en la sesión
-                st.session_state.datos_scraping = pd.concat([st.session_state.datos_scraping, df_nuevos_datos], ignore_index=True).drop_duplicates()
-                log_box.success("✨ ¡Nuevos datos agregados con éxito!")
+                st.session_state.datos_scraping = pd.concat([st.session_state.datos_scraping, df_nuevos_datos], ignore_index=True).drop_duplicates(subset=["Fecha Partido", "Local", "Visitante", "Métrica"])
+                log_box.success("✨ ¡Tabla actualizada correctamente con nuevas métricas!")
             
     except Exception as e:
-        log_box.error(f"❌ Error en este ciclo: {e}")
+        log_box.error(f"❌ Error en la ejecución de la nube: {e}")
 
-    # Refrescar componentes visuales
-    tabla_datos.dataframe(st.session_state.datos_scraping)
+    # Forzar la actualización de los componentes visuales en pantalla
+    tabla_datos.dataframe(st.session_state.datos_scraping, use_container_width=True)
     metric_filas.metric("Filas en Memoria", len(st.session_state.datos_scraping))
     
-    # Espera de 10 segundos y reinicio automático
-    st.write("⏱️ Esperando 10 segundos para el siguiente ciclo...")
+    # Pausa de control y relanzamiento del ciclo completo
+    st.write("⏱️ Esperando 10 segundos para iniciar un nuevo barrido automático...")
     time.sleep(10)
     st.rerun()
 
 else:
-    metric_estado.metric("Estado", "🔴 Detenido")
-    st.info("Activa el switch en la barra lateral izquierda para iniciar el scraping.")
+    metric_estado.metric("Estado del Scraper", "🔴 Detenido")
+    st.info("Utiliza el switch de la barra izquierda para arrancar el scraping continuo.")
