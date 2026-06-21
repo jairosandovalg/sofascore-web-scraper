@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
+import html
+import re
 import time
 from datetime import datetime
 
@@ -31,7 +33,6 @@ tabla_datos = st.empty()
 # 🚀 EXTRACCIÓN DIRECTA DE DATOS EN VIVO
 # ===========================================
 def capturar_feed_live():
-    # Usamos el endpoint global de Scorespro que no bloquea IPs de servidores (Streamlit Cloud)
     url = "https://www.scorespro.com/rss/live-soccer.xml"
     
     headers = {
@@ -43,7 +44,7 @@ def capturar_feed_live():
         response = requests.get(url, headers=headers, timeout=12)
         
         if response.status_code == 200:
-            log_box.success("🎯 ¡Paquete de partidos en directo sincronizado correctamente!")
+            log_box.success("🎯 ¡Paquete de partidos en directo descargado correctamente!")
             return response.text
         else:
             log_box.error(f"❌ Error de respuesta del servidor externo. Código: {response.status_code}")
@@ -53,7 +54,7 @@ def capturar_feed_live():
         return None
 
 # ===========================================
-# 🧹 PARSER DE ESTRUCTURA SEMÁNTICA
+# 🧹 PARSER DE ESTRUCTURA SEMÁNTICA CON LIMPIEZA ANTI-ERROR
 # ===========================================
 def procesar_xml_feed(xml_texto):
     if not xml_texto:
@@ -62,25 +63,35 @@ def procesar_xml_feed(xml_texto):
     partidos_procesados = []
     
     try:
-        root = ET.fromstring(xml_texto)
+        # 🛠️ CORRECCIÓN CRUCIAL: Limpiar caracteres corruptos que rompen el XML
+        # Reemplaza caracteres ampersand (&) que no estén bien formateados como entidad
+        xml_limpio = re.sub(r'&(?![A-Za-z0-9#]+;)', '&amp;', xml_texto)
         
-        # Buscamos todos los elementos de partidos 'item' dentro del RSS
+        # Eliminamos cualquier otro caracter de control extraño que se cuele en las respuestas HTTP
+        xml_limpio = "".join(ch for ch in xml_limpio if ord(ch) >= 32 or ch in "\n\r\t")
+
+        # Ahora el string está sanitizado y no romperá el lector
+        root = ET.fromstring(xml_limpio)
+        
         for item in root.findall(".//item"):
             try:
-                title = item.find("title").text # Contiene "Equipo A vs Equipo B (Marcador, Minuto)"
-                description = item.find("description").text # Contiene detalles de la competición
+                title = item.find("title").text 
+                description = item.find("description").text 
                 
-                # Formateamos los strings para limpiar la metadata visual de la API
                 if " vs " in title:
+                    # Desescapamos entidades HTML por si los nombres venían protegidos (ej: &amp; -> &)
+                    titulo_limpio = html.unescape(title.strip())
+                    desc_limpia = html.unescape(description.strip()) if description else "Fútbol Profesional"
+                    
                     partidos_procesados.append({
-                        "Fecha Captura": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "Competición / Categoría": description.strip() if description else "Fútbol Profesional",
-                        "Partido / Marcador Actual": title.strip()
+                        "Horario Extracción": datetime.now().strftime("%H:%M:%S"),
+                        "Competición / Categoría": desc_limpia,
+                        "Partido / Marcador Actual": titulo_limpio
                     })
             except:
                 continue
     except Exception as err:
-        log_box.error(f"⚠️ Error al estructurar la matriz XML: {err}")
+        log_box.error(f"❌ Error al estructurar la matriz XML: {err}")
         
     return list(partidos_procesados)
 
