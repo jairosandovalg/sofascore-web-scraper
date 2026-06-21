@@ -32,7 +32,7 @@ st.set_page_config(page_title="Test de Conexión", page_icon="🌐", layout="wid
 st.title("🌐 Punto de Partida: Verificación de Entrada")
 st.info(status_instalacion)
 
-url_objetivo = st.text_input("URL a verificar:", "https://www.sofascore.com/es/futbol/en-vivo")
+url_objetivo = st.text_input("URL a verificar:", "https://www.sofascore.com/es")
 btn_conectar = st.button("🔌 Intentar Conectar y Tomar Captura")
 
 # ===========================================
