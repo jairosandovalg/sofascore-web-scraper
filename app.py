@@ -23,15 +23,17 @@ st.write("Esta versión ejecuta el scraping en la nube y muestra los resultados 
 @st.cache_resource
 def iniciar_driver():
     options = webdriver.ChromeOptions()
-    options.add_argument("--start-maximized")
-    options.add_argument("--headless")                # Obligatorio en la nube
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")               # Obligatorio en Linux
-    options.add_argument("--disable-dev-shm-usage")    # Evita caídas de memoria RAM
     
-    # 📌 Forzamos el uso emparejado de Chromium y ChromeDriver instalados mediante packages.txt
-    options.binary_location = "/usr/bin/chromium"
-    service = Service("/usr/bin/chromium-driver")
+    # 📌 Opciones críticas para correr en contenedores Linux/Nube sin interfaz gráfica
+    options.add_argument("--headless=new")             # Formato moderno para headless en Selenium 4
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")               # Evita restricciones de seguridad de Docker
+    options.add_argument("--disable-dev-shm-usage")    # Evita caídas por falta de memoria RAM compartida
+    options.add_argument("--disable-extensions")
+    
+    # Dejamos que Selenium Manager (nativo de Selenium 4) encuentre Chromium solo.
+    # Solo añadimos el servicio básico sin rutas forzadas.
+    service = Service()
     
     driver = webdriver.Chrome(service=service, options=options)
     return driver
