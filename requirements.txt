@@ -2,4 +2,3 @@ streamlit
 pandas
 numpy
 selenium
-webdriver-manager
