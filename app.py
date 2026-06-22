@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import subprocess
 import pandas as pd
+import re
 from playwright.sync_api import sync_playwright
 
 # ===========================================
@@ -64,14 +65,12 @@ if btn_conectar:
             log_box = st.container(border=True)
             log_box.write("🔍 Localizando el botón dinámico conteniendo 'LIVE' o 'En Directo'...")
             
-            # Selector flexible basado en el HTML proveído para el botón del filtro "En Directo"
             locator_flexible = page.locator("div[class*='filters__text']:has-text('DIRECTO'), div[class*='filters__text']:has-text('LIVE')").first
             
             if locator_flexible.count() > 0:
                 texto_detectado = locator_flexible.inner_text()
                 log_box.success(f"🎯 ¡Elemento localizado! Texto real en pantalla: '{texto_detectado}'")
                 
-                # Inyección nativa en el DOM para evitar que capas intermedias bloqueen el clic
                 locator_flexible.dispatch_event("click")
                 log_box.write("🚀 Filtro aplicado con éxito. Esperando actualización de partidos en directo...")
                 page.wait_for_timeout(6000) 
@@ -85,13 +84,11 @@ if btn_conectar:
             # =================================================================
             st.write("📊 Analizando la cartelera en vivo...")
             
-            # 1. Esperar a que los elementos de partidos en vivo reales estén renderizados
             try:
                 page.wait_for_selector("div[data-event-row='true']", timeout=12000)
             except:
                 pass
                 
-            # 2. Localizar todos los contenedores de partidos en vivo reales según el HTML provisto
             partidos = page.locator("div.event__match--live[data-event-row='true']").all()
             num_partidos = len(partidos)
             
@@ -100,17 +97,14 @@ if btn_conectar:
             lista_partidos = []
             
             if num_partidos > 0:
-                # Indicadores de carga visuales en Streamlit
                 progreso_barra = st.progress(0)
                 status_text = st.empty()
                 
                 for index, partido in enumerate(partidos):
                     try:
-                        # Extraer ID único del partido desde el atributo 'id' (ej: "g_1_IJNPSidm" -> "IJNPSidm")
                         id_raiz = partido.get_attribute("id") 
                         id_partido = id_raiz.replace("g_1_", "") if id_raiz else None
                         
-                        # Datos básicos visibles en la cartelera principal
                         tiempo = partido.locator(".event__stage--block").inner_text().strip()
                         equipo_local = partido.locator(".event__homeParticipant").inner_text().strip()
                         equipo_visitante = partido.locator(".event__awayParticipant").inner_text().strip()
@@ -119,30 +113,28 @@ if btn_conectar:
                         
                         status_text.write(f"⏳ Extrayendo estadísticas de: **{equipo_local} vs {equipo_visitante}**...")
                         
-                        # Diccionario molde inicializado a ceros por si el partido no posee métricas aún
+                        # Molde extendido con todas las variables de la imagen provista
                         datos_partido = {
-                            "ID Partido": id_partido,
-                            "Tiempo": tiempo,
-                            "Local": equipo_local,
-                            "GL": marcador_local,
-                            "GV": marcador_visitante,
-                            "Visitante": equipo_visitante,
+                            "ID Partido": id_partido, "Tiempo": tiempo,
+                            "Local": equipo_local, "GL": marcador_local, "GV": marcador_visitante, "Visitante": equipo_visitante,
+                            "xG L": "0.00", "xG V": "0.00",
                             "Posesión L": "50%", "Posesión V": "50%",
                             "Remates Totales L": "0", "Remates Totales V": "0",
                             "Remates Puerta L": "0", "Remates Puerta V": "0",
-                            "Córneres L": "0", "Córneres V": "0"
+                            "Grandes Ocasiones L": "0", "Grandes Ocasiones V": "0",
+                            "Córneres L": "0", "Córneres V": "0",
+                            "Precisión Pases L": "0%", "Precisión Pases V": "0%",
+                            "Pases Completados L": "0", "Pases Completados V": "0",
+                            "Pases Totales L": "0", "Pases Totales V": "0"
                         }
                         
-                        # 🚀 CONEXIÓN PARALELA A LA URL DE ESTADÍSTICAS DIRECTAS (MULTI-TABS)
                         if id_partido:
-                            # Construcción dinámica de la sub-página de estadísticas
                             url_detalle = f"https://www.flashscore.pe/partido/{id_partido}/#/;match-summary/;match-statistics"
                             
                             sub_page = context.new_page()
                             sub_page.goto(url_detalle, timeout=30000, wait_until="domcontentloaded")
-                            sub_page.wait_for_timeout(2500) # Tiempo técnico prudente para la carga del DOM reactivo
+                            sub_page.wait_for_timeout(2500) 
                             
-                            # Aseguramos el foco sobre la pestaña de estadísticas si el hash no se dispara solo
                             try:
                                 boton_stats = sub_page.locator("button[data-testid='wcl-tab']:has-text('Estadísticas')").first
                                 if boton_stats.count() > 0:
@@ -151,7 +143,6 @@ if btn_conectar:
                             except:
                                 pass 
                             
-                            # Procesamiento de filas dinámicas usando el modelo HTML real provisto
                             filas_estadisticas = sub_page.locator("div[data-testid='wcl-statistics']").all()
                             
                             for fila in filas_estadisticas:
@@ -163,8 +154,11 @@ if btn_conectar:
                                         val_local = valores[0].inner_text().strip()
                                         val_visitante = valores[1].inner_text().strip()
                                         
-                                        # Guardar según la métrica correspondiente para tus alertas de apuestas
-                                        if "Posesión" in categoria:
+                                        # Lógica de mapeo basada en la estructura visual de la imagen
+                                        if "Goles esperados" in categoria:
+                                            datos_partido["xG L"] = val_local
+                                            datos_partido["xG V"] = val_visitante
+                                        elif "Posesión" in categoria:
                                             datos_partido["Posesión L"] = val_local
                                             datos_partido["Posesión V"] = val_visitante
                                         elif "Remates totales" in categoria:
@@ -173,55 +167,83 @@ if btn_conectar:
                                         elif "Remates a puerta" in categoria:
                                             datos_partido["Remates Puerta L"] = val_local
                                             datos_partido["Remates Puerta V"] = val_visitante
+                                        elif "Grandes ocasiones" in categoria:
+                                            datos_partido["Grandes Ocasiones L"] = val_local
+                                            datos_partido["Grandes Ocasiones V"] = val_visitante
                                         elif "Córneres" in categoria or "Córners" in categoria:
                                             datos_partido["Córneres L"] = val_local
                                             datos_partido["Córneres V"] = val_visitante
+                                        elif "Pases" in categoria and "Precisión" not in categoria:
+                                            # Manejo dinámico para formato de pases ej: "68%\n(67/99)" o cadenas continuas
+                                            lineas_l = val_local.split('\n')
+                                            lineas_v = val_visitante.split('\n')
+                                            
+                                            datos_partido["Precisión Pases L"] = lineas_l[0]
+                                            datos_partido["Precisión Pases V"] = lineas_v[0]
+                                            
+                                            # Regex para extraer la fracción (completados/totales)
+                                            match_l = re.search(r'\((\d+)/(\d+)\)', val_local.replace(" ", ""))
+                                            match_v = re.search(r'\((\d+)/(\d+)\)', val_visitante.replace(" ", ""))
+                                            
+                                            if match_l:
+                                                datos_partido["Pases Completados L"] = match_l.group(1)
+                                                datos_partido["Pases Totales L"] = match_l.group(2)
+                                            if match_v:
+                                                datos_partido["Pases Completados V"] = match_v.group(1)
+                                                datos_partido["Pases Totales V"] = match_v.group(2)
                                 except:
                                     continue
                             
-                            # Liberar recursos y cerrar pestaña secundaria de inmediato
                             sub_page.close()
                         
                         lista_partidos.append(datos_partido)
                         
                     except Exception as e:
-                        # Si falla el raspado de un partido individual, continúa con el resto de la cartelera
                         continue
                     
-                    # Actualizar barra de progreso dinámicamente
                     progreso_barra.progress((index + 1) / num_partidos)
                 
-                status_text.success("🎯 ¡Procesamiento de estadísticas en vivo completado!")
+                status_text.success("🎯 ¡Métricas e indicadores avanzados consolidados!")
                 
-                # 3. Conversión de tipos de datos para permitir el filtrado y ordenamiento en Streamlit
+                # 3. Conversión y normalización de tipos numéricos para facilitar filtros en la UI
                 df = pd.DataFrame(lista_partidos)
-                columnas_numericas = ["Remates Totales L", "Remates Totales V", "Remates Puerta L", "Remates Puerta V", "Córneres L", "Córneres V"]
                 
-                for col in columnas_numericas:
+                columnas_enteras = [
+                    "Remates Totales L", "Remates Totales V", "Remates Puerta L", "Remates Puerta V",
+                    "Grandes Ocasiones L", "Grandes Ocasiones V", "Córneres L", "Córneres V",
+                    "Pases Completados L", "Pases Completados V", "Pases Totales L", "Pases Totales V"
+                ]
+                for col in columnas_enteras:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
                 
-                # Desplegar interfaz interactiva
-                st.subheader("🔥 Panel de Control In-Play (Estadísticas de Presión)")
-                st.dataframe(
-                    df[[
-                        "Tiempo", "Local", "GL", "GV", "Visitante", 
-                        "Córneres L", "Córneres V", 
-                        "Remates Puerta L", "Remates Puerta V", 
-                        "Remates Totales L", "Remates Totales V", 
-                        "Posesión L", "Posesión V", "ID Partido"
-                    ]], 
-                    use_container_width=True
-                )
+                for col in ["xG L", "xG V"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                
+                # Desplegar interfaz analítica avanzada ordenada por volumen de ataque
+                st.subheader("🔥 Panel In-Play Avanzado (Volumen de Presión & xG)")
+                
+                columnas_mostrar = [
+                    "Tiempo", "Local", "GL", "GV", "Visitante", 
+                    "xG L", "xG V",
+                    "Córneres L", "Córneres V", 
+                    "Remates Puerta L", "Remates Puerta V", 
+                    "Grandes Ocasiones L", "Grandes Ocasiones V",
+                    "Posesión L", "Posesión V",
+                    "Precisión Pases L", "Precisión Pases V",
+                    "ID Partido"
+                ]
+                
+                st.dataframe(df[columnas_mostrar], use_container_width=True)
                 
                 # Guardar automáticamente la matriz para análisis
                 df.to_csv("analisis_live_apuestas.csv", index=False, encoding="utf-8-sig")
-                st.success(f"💾 Matriz reactiva guardada con éxito ({len(df)} registros) en 'analisis_live_apuestas.csv'")
+                st.success(f"💾 Matriz de datos de alta definición guardada en 'analisis_live_apuestas.csv'")
                 
             else:
                 st.warning("⚠️ Cero (0) partidos en directo localizados con los selectores actuales.")
                 
-            # Cierre limpio del motor de navegación al finalizar el proceso
             browser.close()
             
     except Exception as err:
