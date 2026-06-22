@@ -89,45 +89,70 @@ if btn_conectar:
             # 1. Creamos una lista para almacenar los datos estructurados
             lista_partidos = []
             
-            # 2. Localizamos los contenedores de los partidos (Debes investigar la clase real de Flashscore)
-            # Nota: 'div.event__match' es un ejemplo simulado. Debes buscar la clase real en el HTML.
-            partidos = page.locator("div.event__match").all()
+            # =================================================================
+            # 🔥 BLOQUE DE ESTADÍSTICAS OPTIMIZADO (HTML REAL)
+            # =================================================================
+            st.write("📊 Analizando la cartelera en vivo de Flashscore...")
             
-            for partido in partidos:
-                try:
-                    # Extraemos los datos dinámicos usando sub-localizadores
-                    equipo_local = partido.locator(".event__participant--home").inner_text()
-                    equipo_visitante = partido.locator(".event__participant--away").inner_text()
-                    marcador_local = partido.locator(".event__score--home").inner_text()
-                    marcador_visitante = partido.locator(".event__score--away").inner_text()
-                    tiempo = partido.locator(".event__stage").inner_text()
-                    
-                    # Guardamos la información en un diccionario
-                    lista_partidos.append({
-                        "Tiempo": tiempo,
-                        "Local": equipo_local,
-                        "Marcador L": marcador_local,
-                        "Marcador V": marcador_visitante,
-                        "Visitante": equipo_visitante
-                    })
-                except Exception as e:
-                    # Si un partido falla (por ejemplo, se acaba de terminar), continuamos con el siguiente
-                    continue
+            # 1. Esperar a que los elementos de partidos en vivo estén cargados en el DOM
+            page.wait_for_selector("div[data-event-row='true']", timeout=10000)
             
-            # 3. Procesamos y guardamos los datos con Pandas
-            import pandas as pd
-            if lista_partidos:
+            # 2. Localizar todos los contenedores de partidos en vivo reales
+            # Usamos el atributo nativo de Flashscore 'data-event-row="true"' combinado con la clase de vivo
+            partidos = page.locator("div.event__match--live[data-event-row='true']").all()
+            num_partidos = len(partidos)
+            
+            st.metric(label="⚽ Partidos en Directo Detectados", value=num_partidos)
+            
+            lista_partidos = []
+            
+            if num_partidos > 0:
+                for partido in partidos:
+                    try:
+                        # Extraer ID único del partido (servirá para armar URLs directas de estadísticas)
+                        id_raiz = partido.get_attribute("id") # Retorna algo como "g_1_IJNPSidm"
+                        id_partido = id_raiz.replace("g_1_", "") if id_raiz else None
+                        
+                        # Extraer URL de acceso al detalle
+                        enlace_elemento = partido.locator("a.eventRowLink")
+                        url_partido = enlace_elemento.get_attribute("href")
+                        
+                        # Extraer datos visibles en la tabla principal
+                        tiempo = partido.locator(".event__stage--block").inner_text()
+                        equipo_local = partido.locator(".event__homeParticipant").inner_text()
+                        equipo_visitante = partido.locator(".event__awayParticipant").inner_text()
+                        marcador_local = partido.locator(".event__score--home").inner_text()
+                        marcador_visitante = partido.locator(".event__score--away").inner_text()
+                        
+                        # Guardamos la información estructurada
+                        lista_partidos.append({
+                            "ID Partido": id_partido,
+                            "Tiempo": tiempo.strip(),
+                            "Local": equipo_local.strip(),
+                            "GL": marcador_local.strip(),
+                            "GV": marcador_visitante.strip(),
+                            "Visitante": equipo_visitante.strip(),
+                            "URL Detalle": url_partido
+                        })
+                    except Exception as e:
+                        # Si un partido cambia de estado abruptamente, saltamos al siguiente
+                        continue
+                
+                # 3. Procesar con Pandas y mostrar en Streamlit
+                import pandas as pd
                 df = pd.DataFrame(lista_partidos)
                 
-                # Mostramos los datos directamente en la interfaz de Streamlit
-                st.subheader("⚽ Partidos en Vivo Detectados")
-                st.dataframe(df)
+                st.subheader("📋 Lista de Encuentros Activos")
+                # Configuramos st.dataframe para que el enlace sea cliqueable en la UI si deseas revisarlo
+                st.dataframe(
+                    df, 
+                    column_config={"URL Detalle": st.column_config.LinkColumn("Enlace Detalle")},
+                    use_container_width=True
+                )
                 
-                # Guardamos a un archivo CSV (o Excel) automáticamente
-                df.to_csv("partidos_en_vivo.csv", index=False, encoding="utf-8-sig")
-                st.success("💾 ¡Datos guardados exitosamente en 'partidos_en_vivo.csv'!")
+                # Guardar el estado actual de la cartelera
+                df.to_csv("cartelera_live.csv", index=False, encoding="utf-8-sig")
+                st.success(f"💾 Se han detectado y guardado {len(df)} partidos en 'cartelera_live.csv'")
+                
             else:
-                st.warning("⚠️ No se pudieron extraer partidos. Verifica si los selectores HTML cambiaron.")
-            
-    except Exception as err:
-        st.error(f"❌ Ocurrió un inconveniente al interactuar con el navegador: {err}")
+                st.warning("⚠️ Cero (0) partidos en directo localizados con los selectores actuales.")
