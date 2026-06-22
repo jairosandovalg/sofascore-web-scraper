@@ -81,13 +81,53 @@ if btn_conectar:
                 page.get_by_text("LIVE Games", exact=False).first.dispatch_event("click")
                 page.wait_for_timeout(6000)
 
-            st.success("🎉 Captura de pantalla procesada con éxito.")
+            # =================================================================
+            # 🔥 AQUÍ EMPIEZA TU NUEVO BLOQUE DE ESTADÍSTICAS (REEMPLAZA LA CAPTURA)
+            # =================================================================
+            st.write("📊 Extrayendo datos de la cartelera en vivo...")
             
-            # Tomamos la captura para ver los partidos en vivo reales cargados en la nube
-            screenshot_bytes = page.screenshot(full_page=False)
-            st.image(screenshot_bytes, caption="Cartelera LIVE en tiempo real procesada por inyección JS", use_container_width=True)
+            # 1. Creamos una lista para almacenar los datos estructurados
+            lista_partidos = []
             
-            browser.close()
+            # 2. Localizamos los contenedores de los partidos (Debes investigar la clase real de Flashscore)
+            # Nota: 'div.event__match' es un ejemplo simulado. Debes buscar la clase real en el HTML.
+            partidos = page.locator("div.event__match").all()
+            
+            for partido in partidos:
+                try:
+                    # Extraemos los datos dinámicos usando sub-localizadores
+                    equipo_local = partido.locator(".event__participant--home").inner_text()
+                    equipo_visitante = partido.locator(".event__participant--away").inner_text()
+                    marcador_local = partido.locator(".event__score--home").inner_text()
+                    marcador_visitante = partido.locator(".event__score--away").inner_text()
+                    tiempo = partido.locator(".event__stage").inner_text()
+                    
+                    # Guardamos la información en un diccionario
+                    lista_partidos.append({
+                        "Tiempo": tiempo,
+                        "Local": equipo_local,
+                        "Marcador L": marcador_local,
+                        "Marcador V": marcador_visitante,
+                        "Visitante": equipo_visitante
+                    })
+                except Exception as e:
+                    # Si un partido falla (por ejemplo, se acaba de terminar), continuamos con el siguiente
+                    continue
+            
+            # 3. Procesamos y guardamos los datos con Pandas
+            import pandas as pd
+            if lista_partidos:
+                df = pd.DataFrame(lista_partidos)
+                
+                # Mostramos los datos directamente en la interfaz de Streamlit
+                st.subheader("⚽ Partidos en Vivo Detectados")
+                st.dataframe(df)
+                
+                # Guardamos a un archivo CSV (o Excel) automáticamente
+                df.to_csv("partidos_en_vivo.csv", index=False, encoding="utf-8-sig")
+                st.success("💾 ¡Datos guardados exitosamente en 'partidos_en_vivo.csv'!")
+            else:
+                st.warning("⚠️ No se pudieron extraer partidos. Verifica si los selectores HTML cambiaron.")
             
     except Exception as err:
         st.error(f"❌ Ocurrió un inconveniente al interactuar con el navegador: {err}")
