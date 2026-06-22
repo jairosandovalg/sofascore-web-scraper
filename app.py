@@ -71,7 +71,6 @@ if btn_conectar:
                 log_box.success(f"🎯 ¡Elemento localizado! Texto real en pantalla: '{texto_detectado}'")
                 
                 # 🔥 DISPARO POR JAVASCRIPT DIRECTO: Traspasa problemas de 'Element is not visible'
-                # Obliga al navegador a ejecutar el evento de clic directamente en el nodo del DOM
                 locator_flexible.dispatch_event("click")
                 
                 log_box.write("🚀 Evento JavaScript 'click' inyectado con éxito. Esperando actualización de partidos...")
@@ -82,14 +81,6 @@ if btn_conectar:
                 page.wait_for_timeout(6000)
 
             # =================================================================
-            # 🔥 AQUÍ EMPIEZA TU NUEVO BLOQUE DE ESTADÍSTICAS (REEMPLAZA LA CAPTURA)
-            # =================================================================
-            st.write("📊 Extrayendo datos de la cartelera en vivo...")
-            
-            # 1. Creamos una lista para almacenar los datos estructurados
-            lista_partidos = []
-            
-            # =================================================================
             # 🔥 BLOQUE DE ESTADÍSTICAS OPTIMIZADO (HTML REAL)
             # =================================================================
             st.write("📊 Analizando la cartelera en vivo de Flashscore...")
@@ -98,7 +89,6 @@ if btn_conectar:
             page.wait_for_selector("div[data-event-row='true']", timeout=10000)
             
             # 2. Localizar todos los contenedores de partidos en vivo reales
-            # Usamos el atributo nativo de Flashscore 'data-event-row="true"' combinado con la clase de vivo
             partidos = page.locator("div.event__match--live[data-event-row='true']").all()
             num_partidos = len(partidos)
             
@@ -109,8 +99,8 @@ if btn_conectar:
             if num_partidos > 0:
                 for partido in partidos:
                     try:
-                        # Extraer ID único del partido (servirá para armar URLs directas de estadísticas)
-                        id_raiz = partido.get_attribute("id") # Retorna algo como "g_1_IJNPSidm"
+                        # Extraer ID único del partido
+                        id_raiz = partido.get_attribute("id") 
                         id_partido = id_raiz.replace("g_1_", "") if id_raiz else None
                         
                         # Extraer URL de acceso al detalle
@@ -135,7 +125,7 @@ if btn_conectar:
                             "URL Detalle": url_partido
                         })
                     except Exception as e:
-                        # Si un partido cambia de estado abruptamente, saltamos al siguiente
+                        # Si un partido individual falla, saltamos al siguiente
                         continue
                 
                 # 3. Procesar con Pandas y mostrar en Streamlit
@@ -143,7 +133,6 @@ if btn_conectar:
                 df = pd.DataFrame(lista_partidos)
                 
                 st.subheader("📋 Lista de Encuentros Activos")
-                # Configuramos st.dataframe para que el enlace sea cliqueable en la UI si deseas revisarlo
                 st.dataframe(
                     df, 
                     column_config={"URL Detalle": st.column_config.LinkColumn("Enlace Detalle")},
@@ -156,3 +145,9 @@ if btn_conectar:
                 
             else:
                 st.warning("⚠️ Cero (0) partidos en directo localizados con los selectores actuales.")
+                
+            # Cerramos el navegador limpiamente al terminar el bloque with
+            browser.close()
+            
+    except Exception as err:
+        st.error(f"❌ Ocurrió un inconveniente al interactuar con el navegador: {err}")
