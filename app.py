@@ -5,30 +5,24 @@ import subprocess
 import sys
 from streamlit_autorefresh import st_autorefresh
 
-# --- INSTALACIÓN FORZADA DE BINARIOS Y DEPENDENCIAS DE SISTEMA ---
+# --- INSTALACIÓN DEL BINARIO SIN PRIVILEGIOS DE ADMINISTRADOR ---
 @st.cache_resource
-def inicializar_entorno_linux():
-    with st.spinner("🔧 Configurando librerías del sistema y navegador... Esto tardará un momento en el primer inicio."):
+def inicializar_playwright_cloud():
+    with st.spinner("🚀 Sincronizando motor Chromium aislado en la nube..."):
         try:
-            # 1. Instala el navegador Chromium aislado
+            # Instalamos el binario local de Chromium. Las dependencias ya fueron cubiertas por packages.txt
             subprocess.run(
                 [sys.executable, "-m", "playwright", "install", "chromium"], 
                 check=True, 
                 capture_output=True
             )
-            # 2. CORRECCIÓN CRÍTICA PARA EXIT CODE 127: Instala las dependencias del sistema operativo que falten
-            subprocess.run(
-                [sys.executable, "-m", "playwright", "install-deps"], 
-                check=True, 
-                capture_output=True
-            )
             return True
         except Exception as e:
-            st.error(f"Error crítico configurando el entorno Linux: {e}")
+            st.error(f"Error al inicializar Chromium: {e}")
             return False
 
-# Ejecutamos la inicialización limpia
-entorno_listo = inicializar_entorno_linux()
+# Ejecutamos la carga segura
+entorno_listo = inicializar_playwright_cloud()
 
 # CONFIGURACIÓN DE LA INTERFAZ
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
@@ -86,7 +80,7 @@ if entorno_listo:
                 st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
                 
         except Exception as e:
-            st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando...")
+            st.error(f"⏳ Archivo de intercambio de datos ocupado. Sincronizando en el próximo ciclo...")
     else:
         st.warning("⏳ Esperando la primera generación del archivo de datos...")
         st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
@@ -98,4 +92,4 @@ if entorno_listo:
             except Exception as e:
                 st.error(f"No se pudo inicializar el motor automático: {e}")
 else:
-    st.error("No se pudo iniciar la aplicación porque faltan componentes del sistema en el servidor.")
+    st.error("No se pudo iniciar la aplicación porque falló el despliegue del binario del navegador.")
