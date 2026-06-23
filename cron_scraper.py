@@ -6,17 +6,19 @@ import re
 import gc  
 from playwright.sync_api import sync_playwright
 
+# Intervalo óptimo de actualización en segundos para monitoreo In-Play
 INTERVALO_REFRESCO = 20 
 
 def ejecutar_raspado():
+    # El contexto de Playwright se inicializa dentro de la función para destruirse en cada ciclo
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True, 
             args=[
                 "--no-sandbox", 
                 "--disable-dev-shm-usage",
-                "--disable-gpu",               
-                "--js-flags=--max-old-space-size=256", 
+                "--disable-gpu",               # Desactiva aceleración de hardware para ahorrar RAM en la nube
+                "--js-flags=--max-old-space-size=256", # Restringe el consumo de JS dentro de las pestañas ocultas
                 "--disable-blink-features=AutomationControlled"
             ]
         )
@@ -30,6 +32,7 @@ def ejecutar_raspado():
         page.goto("https://www.flashscore.pe/", timeout=45000, wait_until="domcontentloaded")
         time.sleep(3)
         
+        # Localizar el filtro dinámico "EN DIRECTO" o "LIVE"
         locator_flexible = page.locator("div[class*='filters__text']:has-text('DIRECTO'), div[class*='filters__text']:has-text('LIVE')").first
         if locator_flexible.count() > 0:
             locator_flexible.dispatch_event("click")
@@ -38,24 +41,28 @@ def ejecutar_raspado():
             page.get_by_text("EN DIRECTO", exact=False).first.dispatch_event("click")
             time.sleep(4)
 
+        # Detectar las filas de los partidos en vivo usando la estructura HTML real
         partidos = page.locator("div.event__match--live[data-event-row='true']").all()
         num_partidos = len(partidos)
-        print(f"⚽ [{time.strftime('%X')}] Partidos detectados: {num_partidos}")
+        print(f"⚽ [{time.strftime('%X')}] Partidos detectados en vivo: {num_partidos}")
         
         lista_partidos = []
         
         if num_partidos > 0:
             for partido in partidos:
                 try:
+                    # Extraer el ID único del partido (ej: "g_1_IJNPSidm" -> "IJNPSidm")
                     id_raiz = partido.get_attribute("id") 
                     id_partido = id_raiz.replace("g_1_", "") if id_raiz else None
                     
+                    # Capturar metadatos básicos de la cartelera principal
                     tiempo = partido.locator(".event__stage--block").inner_text().strip()
                     equipo_local = partido.locator(".event__homeParticipant").inner_text().strip()
                     equipo_visitante = partido.locator(".event__awayParticipant").inner_text().strip()
                     marcador_local = partido.locator(".event__score--home").inner_text().strip()
                     marcador_visitante = partido.locator(".event__score--away").inner_text().strip()
                     
+                    # Inicializar molde de datos con valores por defecto
                     datos_partido = {
                         "Última Actualización": time.strftime('%X'), "ID Partido": id_partido, "Tiempo": tiempo,
                         "Local": equipo_local, "GL": marcador_local, "GV": marcador_visitante, "Visitante": equipo_visitante,
@@ -65,6 +72,7 @@ def ejecutar_raspado():
                         "Precisión Pases L": "0%", "Precisión Pases V": "0%", "TA L": "0", "TA V": "0", "TR L": "0", "TR V": "0"
                     }
                     
+                    # Extraer estadísticas avanzadas in-play abriendo el enlace directo en una pestaña secundaria
                     if id_partido:
                         url_detalle = f"https://www.flashscore.pe/partido/{id_partido}/#/;match-summary/;match-statistics"
                         sub_page = context.new_page()
@@ -79,6 +87,7 @@ def ejecutar_raspado():
                         except:
                             pass 
                         
+                        # Extraer dinámicamente cada fila de estadísticas según tu HTML real
                         filas_estadisticas = sub_page.locator("div[data-testid='wcl-statistics']").all()
                         for fila in filas_estadisticas:
                             try:
@@ -118,11 +127,13 @@ def ejecutar_raspado():
                                         datos_partido["Precisión Pases V"] = val_visitante.split('\n')[0]
                             except:
                                 continue
+                        # Liberación inmediata de recursos por pestaña de partido procesado
                         sub_page.close()
                     lista_partidos.append(datos_partido)
                 except:
                     continue
             
+            # Formatear la estructura en un DataFrame de Pandas
             df = pd.DataFrame(lista_partidos)
             columnas_enteras = ["Remates Totales L", "Remates Totales V", "Remates Puerta L", "Remates Puerta V", "Grandes Ocasiones L", "Grandes Ocasiones V", "Córneres L", "Córneres V", "TA L", "TA V", "TR L", "TR V"]
             for col in columnas_enteras:
@@ -132,26 +143,26 @@ def ejecutar_raspado():
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
             
+            # Escritura limpia y atómica del archivo de intercambio CSV
             df.to_csv("analisis_live_apuestas.csv", index=False, encoding="utf-8-sig")
-            print("✅ Archivo de intercambio reescrito con éxito.")
+            print("✅ Archivo 'analisis_live_apuestas.csv' reescrito con éxito.")
             
+        # Cierre absoluto del motor Chromium para vaciar la memoria RAM por completo
         browser.close()
 
 if __name__ == "__main__":
-    try:
-        print("📥 Verificando e instalando binarios de Playwright...")
-        os.system(f"{sys.executable} -m playwright install chromium")
-    except Exception as ex:
-        print(f"⚠️ Nota de instalación: {ex}")
-
+    print("🚀 Iniciando servicio persistente de raspado in-play 24/7...")
+    
+    # Ciclo infinito tolerante a fallos de red o caídas de servidor
     while True:
         try:
             ejecutar_raspado()
         except Exception as e:
-            print(f"⚠️ Alerta controlada: Fallo en el ciclo ({e}). Reiniciando en 10s...")
+            print(f"⚠️ Alerta controlada: Fallo en el ciclo ({e}). Reiniciando motor en 10s...")
             time.sleep(10)
             continue
         
+        # Forzar la recolección de basura de Python para evitar la acumulación de memoria interna
         gc.collect() 
-        print(f"💤 Ciclo terminado. Esperando {INTERVALO_REFRESCO} segundos...\n")
+        print(f"💤 Ciclo terminado. Esperando {INTERVALO_REFRESCO} segundos para el próximo barrido...\n")
         time.sleep(INTERVALO_REFRESCO)
