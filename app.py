@@ -11,16 +11,15 @@ import sys
 # ====================================================================
 def arrancar_scraper_background():
     try:
-        # Se elimina el comando subprocess.run de instalación para evitar bloqueos
         # Ejecuta el script cron usando el intérprete de Python del entorno actual
-        subprocess.Popen([sys.executable, "cron_scraper.py"])
+        # Usamos stdout y stderr en DEVNULL para evitar colapsar los logs del contenedor cloud
+        subprocess.Popen(
+            [sys.executable, "cron_scraper.py"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
     except Exception as e:
         print(f"❌ Error al inicializar el proceso del Scraper: {e}")
-
-# Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
-if "scraper_inicializado" not in st.session_state:
-    st.session_state["scraper_inicializado"] = True
-    threading.Thread(target=arrancar_scraper_background, daemon=True).start()
 
 # Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
 if "scraper_inicializado" not in st.session_state:
@@ -65,13 +64,13 @@ if os.path.exists(archivo_datos):
             # Asegurar que solo se muestren columnas existentes para evitar KeyErrors accidentales
             columnas_validas = [col for col in columnas_mostrar if col in df.columns]
             
-            # Despliegue de tabla interactiva y ordenable
-            st.dataframe(df[columnas_validas], use_container_width=True, height=600)
+            # CORRECCIÓN DE SINTAXIS 2026: Se reemplaza use_container_width por width='stretch'
+            st.dataframe(df[columnas_validas], width='stretch', height=600)
         else:
             st.info("⏳ El archivo de datos está siendo actualizado por el Scraper. Esperando próximo refresco...")
             
     except Exception as e:
-        st.error(f"⏳ Archivo temporalmente bloqueado (I/O Concurrency). Reintentando en 10s...")
+        st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando en 10s...")
 else:
     st.warning("⏳ Inicializando el motor de raspado automatizado en el servidor Cloud...")
-    st.info("El script `cron_scraper.py` ha sido despertado en segundo plano. Tomará aproximadamente 60-90 segundos en completar su primer barrido de partidos en directo y generar el archivo de intercambio.")
+    st.info("El script `cron_scraper.py` ha sido despertado en segundo plano. Tomará aproximadamente 60-90 segundos en completar su primer barrido.")
