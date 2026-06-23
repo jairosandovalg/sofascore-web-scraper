@@ -99,7 +99,7 @@ def ejecutar_raspado():
                     
                     # Diccionario base para este partido
                     datos_partido = {
-                        "Tiempo": tiempo, "Local": local, "GL": gl, "GV": gv, "Visitante":民 visitante,
+                        "Tiempo": tiempo, "Local": local, "GL": gl, "GV": gv, "Visitante": visitante,
                         "Última Actualización": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
                     
