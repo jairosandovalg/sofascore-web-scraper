@@ -5,12 +5,15 @@ import subprocess
 import sys
 from streamlit_autorefresh import st_autorefresh
 
-# --- INSTALACIÓN DEL BINARIO SIN PRIVILEGIOS DE ADMINISTRADOR ---
+# --- CONFIGURACIÓN DE RUTA LOCAL ABSOLUTA PARA PLAYWRIGHT ---
+# Forzamos a Playwright a instalar y buscar el navegador dentro de la carpeta del proyecto
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.getcwd(), ".playwright-browsers")
+
 @st.cache_resource
-def inicializar_playwright_cloud():
-    with st.spinner("🚀 Sincronizando motor Chromium aislado en la nube..."):
+def inicializar_playwright_local():
+    with st.spinner("🚀 Configurando entorno Chromium local en la nube (Paso Único)..."):
         try:
-            # Instalamos el binario local de Chromium. Las dependencias ya fueron cubiertas por packages.txt
+            # Instalamos el binario directamente en el directorio local del proyecto
             subprocess.run(
                 [sys.executable, "-m", "playwright", "install", "chromium"], 
                 check=True, 
@@ -18,11 +21,11 @@ def inicializar_playwright_cloud():
             )
             return True
         except Exception as e:
-            st.error(f"Error al inicializar Chromium: {e}")
+            st.error(f"Error al inicializar el binario de Chromium: {e}")
             return False
 
-# Ejecutamos la carga segura
-entorno_listo = inicializar_playwright_cloud()
+# Inicializar entorno antes de construir la UI
+entorno_listo = inicializar_playwright_local()
 
 # CONFIGURACIÓN DE LA INTERFAZ
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
@@ -80,7 +83,7 @@ if entorno_listo:
                 st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
                 
         except Exception as e:
-            st.error(f"⏳ Archivo de intercambio de datos ocupado. Sincronizando en el próximo ciclo...")
+            st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Sincronizando...")
     else:
         st.warning("⏳ Esperando la primera generación del archivo de datos...")
         st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
@@ -92,4 +95,4 @@ if entorno_listo:
             except Exception as e:
                 st.error(f"No se pudo inicializar el motor automático: {e}")
 else:
-    st.error("No se pudo iniciar la aplicación porque falló el despliegue del binario del navegador.")
+    st.error("El entorno no se pudo inicializar correctamente.")
