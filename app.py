@@ -11,15 +11,16 @@ import sys
 # ====================================================================
 def arrancar_scraper_background():
     try:
-        # Asegurar la instalación de binarios de Playwright antes de lanzar el proceso secundario
-        # Esto previene errores de "Executable doesn't exist" en la nube de Streamlit
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-        
-        # Ejecuta el script cron de forma totalmente independiente
-        # Usamos sys.executable para garantizar que use el mismo entorno virtual de Python
+        # Se elimina el comando subprocess.run de instalación para evitar bloqueos
+        # Ejecuta el script cron usando el intérprete de Python del entorno actual
         subprocess.Popen([sys.executable, "cron_scraper.py"])
     except Exception as e:
         print(f"❌ Error al inicializar el proceso del Scraper: {e}")
+
+# Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
+if "scraper_inicializado" not in st.session_state:
+    st.session_state["scraper_inicializado"] = True
+    threading.Thread(target=arrancar_scraper_background, daemon=True).start()
 
 # Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
 if "scraper_inicializado" not in st.session_state:
