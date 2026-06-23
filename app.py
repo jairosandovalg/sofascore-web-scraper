@@ -11,7 +11,7 @@ os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.getcwd(), ".playwright-
 
 @st.cache_resource
 def inicializar_playwright_local():
-    with st.spinner("🚀 Configurando entorno Chromium local en la nube (Paso Único)..."):
+    with st.spinner("🚀 Sincronizando motor Chromium local en la nube (Paso Único)..."):
         try:
             # Instalamos el binario directamente en el directorio local del proyecto
             subprocess.run(
@@ -83,7 +83,7 @@ if entorno_listo:
                 st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
                 
         except Exception as e:
-            st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Sincronizando...")
+            st.error(f"⏳ Archivo de intercambio de datos ocupado. Sincronizando...")
     else:
         st.warning("⏳ Esperando la primera generación del archivo de datos...")
         st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
@@ -96,3 +96,16 @@ if entorno_listo:
                 st.error(f"No se pudo inicializar el motor automático: {e}")
 else:
     st.error("El entorno no se pudo inicializar correctamente.")
+
+# =====================================================================
+# VISOR DE LOGS INTEGRADO AL FINAL ABSOLUTO DE LA APP
+# =====================================================================
+st.markdown("---")
+st.subheader("🕵️‍♂️ Auditoría del Robot en Vivo (Logs)")
+if os.path.exists("robot_ejecucion.log"):
+    with open("robot_ejecucion.log", "r", encoding="utf-8") as f:
+        lineas = f.readlines()
+    # Muestra las últimas 15 líneas grabadas por el cron_scraper.py
+    st.code("".join(lineas[-15:]))
+else:
+    st.info("El archivo de registro de eventos aún no se ha generado en el servidor.")
