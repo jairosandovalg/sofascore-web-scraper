@@ -4,7 +4,12 @@ import pandas as pd
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
+# === AÑADE ESTA LÍNEA CRÍTICA AQUÍ TAMBIÉN ===
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.getcwd(), ".playwright-browsers")
+# ============================================
+
 def ejecutar_raspado():
+    # ... resto de tu código de raspado igual
     archivo_salida = "analisis_live_apuestas.csv"
     hora_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
