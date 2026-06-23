@@ -11,11 +11,12 @@ import sys
 # ====================================================================
 def arrancar_scraper_background():
     try:
-        # Habilitamos la salida de consola para ver qué pasa exactamente en la nube
+        # Se inicia el subproceso en una sesión separada de Linux (previene interrupciones mutuas)
         subprocess.Popen(
             [sys.executable, "cron_scraper.py"],
             stdout=None,
-            stderr=None
+            stderr=None,
+            start_new_session=True
         )
     except Exception as e:
         print(f"❌ Error crítico en el hilo conductor: {e}")
