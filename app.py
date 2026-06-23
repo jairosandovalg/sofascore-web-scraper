@@ -20,11 +20,12 @@ with col2:
     if st.button("🔄 Forzar Raspado Manual"):
         with st.spinner("Ejecutando escaneo manual..."):
             try:
-                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-                subprocess.run([sys.executable, "cron_scraper.py"], timeout=90)
+                # Eliminamos la instalación manual pesada de playwright aquí para evitar bloqueos
+                subprocess.run([sys.executable, "cron_scraper.py"], timeout=90, check=True)
                 st.success("¡Completado!")
+                st.rerun()
             except Exception as ex:
-                st.error(f"Error: {ex}")
+                st.error(f"Error en raspado: {ex}")
 
 # DESPLIEGUE DE DATOS
 if os.path.exists(archivo_datos):
@@ -46,9 +47,9 @@ if os.path.exists(archivo_datos):
             ]
             
             columnas_validas = [col for col in columnas_mostrar if col in df.columns]
-            st.dataframe(df[columnas_validas], width='stretch', height=600)
+            st.dataframe(df[columnas_validas], use_container_width=True, height=600)
         else:
-            st.info("⏳ Al momento no hay partidos en directo disponibles en Flashscore. Esperando encuentros...")
+            st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
             
     except Exception as e:
         st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando...")
@@ -56,10 +57,11 @@ else:
     st.warning("⏳ Esperando la primera generación del archivo de datos...")
     st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
     
-    # Intento de arranque automático sutil en segundo plano si no existe el archivo
-    if "auto_start" not in st.session_state:
-        st.session_state["auto_start"] = True
+    # Control estricto del arranque único en segundo plano
+    if "auto_start_initiated" not in st.session_state:
+        st.session_state["auto_start_initiated"] = True
         try:
-            subprocess.Popen([sys.executable, "cron_scraper.py"], start_new_session=True)
-        except:
-            pass
+            # Lanza el proceso una única vez sin bloquear el hilo principal de Streamlit
+            subprocess.Popen([sys.executable, "cron_scraper.py"])
+        except Exception as e:
+            st.error(f"No se pudo inicializar el motor automático: {e}")
