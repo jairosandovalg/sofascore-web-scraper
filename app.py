@@ -11,20 +11,17 @@ import sys
 # ====================================================================
 def arrancar_scraper_background():
     try:
-        # Ejecuta el script cron usando el intérprete de Python del entorno actual
-        # Usamos stdout y stderr en DEVNULL para evitar colapsar los logs del contenedor cloud
+        # Habilitamos la salida de consola para ver qué pasa exactamente en la nube
         subprocess.Popen(
             [sys.executable, "cron_scraper.py"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=None,
+            stderr=None
         )
     except Exception as e:
-        print(f"❌ Error al inicializar el proceso del Scraper: {e}")
+        print(f"❌ Error crítico en el hilo conductor: {e}")
 
-# Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
 if "scraper_inicializado" not in st.session_state:
     st.session_state["scraper_inicializado"] = True
-    # Lanzamos el proceso en un hilo daemon para que no bloquee el cierre de la app principal
     threading.Thread(target=arrancar_scraper_background, daemon=True).start()
 
 # ====================================================================
@@ -33,7 +30,7 @@ if "scraper_inicializado" not in st.session_state:
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
 
-# 🔄 Configuración del Refresco Automático de la Interfaz (Cada 10 segundos)
+# Refresco automático de la pantalla cada 10 segundos
 st_autorefresh(interval=10 * 1000, key="datarefresh")
 
 archivo_datos = "analisis_live_apuestas.csv"
@@ -43,10 +40,8 @@ archivo_datos = "analisis_live_apuestas.csv"
 # ====================================================================
 if os.path.exists(archivo_datos):
     try:
-        # Leer la base de datos actualizada en segundo plano por el cron_scraper
         df = pd.read_csv(archivo_datos)
         
-        # Validación de seguridad: Comprobar que el archivo no esté vacío o siendo sobreescrito
         if not df.empty and "Última Actualización" in df.columns:
             ultima_hora = df["Última Actualización"].iloc[0]
             st.success(f"🔄 Interfaz sincronizada en la nube. Último barrido del robot: **{ultima_hora}**")
@@ -61,10 +56,7 @@ if os.path.exists(archivo_datos):
                 "Posesión L", "Posesión V", "Precisión Pases L", "Precisión Pases V"
             ]
             
-            # Asegurar que solo se muestren columnas existentes para evitar KeyErrors accidentales
             columnas_validas = [col for col in columnas_mostrar if col in df.columns]
-            
-            # CORRECCIÓN DE SINTAXIS 2026: Se reemplaza use_container_width por width='stretch'
             st.dataframe(df[columnas_validas], width='stretch', height=600)
         else:
             st.info("⏳ El archivo de datos está siendo actualizado por el Scraper. Esperando próximo refresco...")
