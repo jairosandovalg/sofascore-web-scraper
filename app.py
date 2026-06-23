@@ -4,52 +4,73 @@ import os
 from streamlit_autorefresh import st_autorefresh
 import threading
 import subprocess
-import os
+import sys
 
-# Función para arrancar el cron_scraper en segundo plano dentro del servidor cloud
+# ====================================================================
+# 🚀 CONTROL NATIVO DE HILOS PARA SCRAPER 24/7 EN SEGUNDO PLANO
+# ====================================================================
 def arrancar_scraper_background():
-    if not os.path.exists("scraper_activo.txt"):
-        with open("scraper_activo.txt", "w") as f:
-            f.write("running")
-        # Ejecuta el script de python de forma independiente y asíncrona
-        subprocess.Popen(["python", "cron_scraper.py"])
+    try:
+        # Asegurar la instalación de binarios de Playwright antes de lanzar el proceso secundario
+        # Esto previene errores de "Executable doesn't exist" en la nube de Streamlit
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        
+        # Ejecuta el script cron de forma totalmente independiente
+        # Usamos sys.executable para garantizar que use el mismo entorno virtual de Python
+        subprocess.Popen([sys.executable, "cron_scraper.py"])
+    except Exception as e:
+        print(f"❌ Error al inicializar el proceso del Scraper: {e}")
 
-# Lanzar el hilo persistente si no está corriendo
-threading.Thread(target=arrancar_scraper_background, daemon=True).start()
+# Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
+if "scraper_inicializado" not in st.session_state:
+    st.session_state["scraper_inicializado"] = True
+    # Lanzamos el proceso en un hilo daemon para que no bloquee el cierre de la app principal
+    threading.Thread(target=arrancar_scraper_background, daemon=True).start()
 
+# ====================================================================
+# 💻 CONFIGURACIÓN DE LA INTERFAZ DE STREAMLIT
+# ====================================================================
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
 
-# 🔄 Configuración del Refresco Automático de la Interfaz (Cada 10 segundos lee el CSV)
+# 🔄 Configuración del Refresco Automático de la Interfaz (Cada 10 segundos)
 st_autorefresh(interval=10 * 1000, key="datarefresh")
 
 archivo_datos = "analisis_live_apuestas.csv"
 
+# ====================================================================
+# 📊 CONTROL Y DESPLIEGUE DE LA MATRIZ DE DATOS
+# ====================================================================
 if os.path.exists(archivo_datos):
     try:
         # Leer la base de datos actualizada en segundo plano por el cron_scraper
         df = pd.read_csv(archivo_datos)
         
-        # Muestra la última hora en la que el robot inyectó datos
-        ultima_hora = df["Última Actualización"].iloc[0] if "Última Actualización" in df.columns else "Desconocida"
-        st.success(f"🔄 Interfaz sincronizada. Datos del servidor actualizados por última vez a las: **{ultima_hora}**")
-        
-        # Estructura del panel interactivo
-        st.subheader("🔥 Presión y Volumen de Ataque en Directo")
-        
-        columnas_mostrar = [
-            "Tiempo", "Local", "GL", "GV", "Visitante", 
-            "xG L", "xG V", "Córneres L", "Córneres V", 
-            "Remates Puerta L", "Remates Puerta V", "Remates Totales L", "Remates Totales V",
-            "Grandes Ocasiones L", "Grandes Ocasiones V", "TA L", "TA V", "TR L", "TR V",
-            "Posesión L", "Posesión V", "Precisión Pases L", "Precisión Pases V"
-        ]
-        
-        # Despliegue de tabla ordenable
-        st.dataframe(df[columnas_mostrar], use_container_width=True, height=600)
-        
+        # Validación de seguridad: Comprobar que el archivo no esté vacío o siendo sobreescrito
+        if not df.empty and "Última Actualización" in df.columns:
+            ultima_hora = df["Última Actualización"].iloc[0]
+            st.success(f"🔄 Interfaz sincronizada en la nube. Último barrido del robot: **{ultima_hora}**")
+            
+            st.subheader("🔥 Presión y Volumen de Ataque en Directo")
+            
+            columnas_mostrar = [
+                "Tiempo", "Local", "GL", "GV", "Visitante", 
+                "xG L", "xG V", "Córneres L", "Córneres V", 
+                "Remates Puerta L", "Remates Puerta V", "Remates Totales L", "Remates Totales V",
+                "Grandes Ocasiones L", "Grandes Ocasiones V", "TA L", "TA V", "TR L", "TR V",
+                "Posesión L", "Posesión V", "Precisión Pases L", "Precisión Pases V"
+            ]
+            
+            # Asegurar que solo se muestren columnas existentes para evitar KeyErrors accidentales
+            columnas_validas = [col for col in columnas_mostrar if col in df.columns]
+            
+            # Despliegue de tabla interactiva y ordenable
+            st.dataframe(df[columnas_validas], use_container_width=True, height=600)
+        else:
+            st.info("⏳ El archivo de datos está siendo actualizado por el Scraper. Esperando próximo refresco...")
+            
     except Exception as e:
-        st.error(f"⏳ Intentando leer el archivo de intercambio... (El scraper podría estar escribiendo en él): {e}")
+        st.error(f"⏳ Archivo temporalmente bloqueado (I/O Concurrency). Reintentando en 10s...")
 else:
-    st.warning("⏳ Esperando que el extractor genere el primer archivo de datos dinámicos ('analisis_live_apuestas.csv')...")
-    st.info("Asegúrate de ejecutar 'python cron_scraper.py' en una terminal paralela para iniciar la captura de datos.")
+    st.warning("⏳ Inicializando el motor de raspado automatizado en el servidor Cloud...")
+    st.info("El script `cron_scraper.py` ha sido despertado en segundo plano. Tomará aproximadamente 60-90 segundos en completar su primer barrido de partidos en directo y generar el archivo de intercambio.")
