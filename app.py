@@ -11,12 +11,11 @@ import sys
 # ====================================================================
 def arrancar_scraper_background():
     try:
-        # 1. Forzar de manera segura la instalación interna del binario de Chromium
-        # Usamos sys.executable para que se instale exactamente en el entorno virtual activo
-        st.write("🔧 Configurando controladores de navegación en el servidor cloud...")
+        # CORRECCIÓN CRÍTICA: NO usar st.write aquí adentro.
+        # Ejecutamos la instalación en silencio dentro del subproceso secundario
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
         
-        # 2. Se inicia el subproceso en una sesión separada de Linux (evita interrupciones mutuas)
+        # Iniciar el script cron de manera asíncrona y aislada
         subprocess.Popen(
             [sys.executable, "cron_scraper.py"],
             stdout=None,
@@ -26,6 +25,7 @@ def arrancar_scraper_background():
     except Exception as e:
         print(f"❌ Error crítico en el hilo conductor: {e}")
 
+# Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
 if "scraper_inicializado" not in st.session_state:
     st.session_state["scraper_inicializado"] = True
     threading.Thread(target=arrancar_scraper_background, daemon=True).start()
@@ -65,7 +65,7 @@ if os.path.exists(archivo_datos):
             columnas_validas = [col for col in columnas_mostrar if col in df.columns]
             st.dataframe(df[columnas_validas], width='stretch', height=600)
         else:
-            st.info("⏳ El archivo de datos está siendo actualizado por el Scraper. Esperando próximo refresco...")
+            st.info("⏳ Al momento no hay partidos en directo disponibles en Flashscore. Esperando encuentros...")
             
     except Exception as e:
         st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando en 10s...")
