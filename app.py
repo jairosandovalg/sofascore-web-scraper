@@ -113,7 +113,7 @@ if btn_conectar:
                         
                         status_text.write(f"⏳ Extrayendo estadísticas de: **{equipo_local} vs {equipo_visitante}**...")
                         
-                        # Molde extendido con todas las variables de la imagen provista
+                        # Molde definitivo alineado al 100% con image_b7f26a.png
                         datos_partido = {
                             "ID Partido": id_partido, "Tiempo": tiempo,
                             "Local": equipo_local, "GL": marcador_local, "GV": marcador_visitante, "Visitante": equipo_visitante,
@@ -124,8 +124,8 @@ if btn_conectar:
                             "Grandes Ocasiones L": "0", "Grandes Ocasiones V": "0",
                             "Córneres L": "0", "Córneres V": "0",
                             "Precisión Pases L": "0%", "Precisión Pases V": "0%",
-                            "Pases Completados L": "0", "Pases Completados V": "0",
-                            "Pases Totales L": "0", "Pases Totales V": "0"
+                            "TA L": "0", "TA V": "0",  # Tarjetas Amarillas
+                            "TR L": "0", "TR V": "0"   # Tarjetas Rojas
                         }
                         
                         if id_partido:
@@ -154,7 +154,7 @@ if btn_conectar:
                                         val_local = valores[0].inner_text().strip()
                                         val_visitante = valores[1].inner_text().strip()
                                         
-                                        # Lógica de mapeo basada en la estructura visual de la imagen
+                                        # Mapeo exhaustivo de categorías
                                         if "Goles esperados" in categoria:
                                             datos_partido["xG L"] = val_local
                                             datos_partido["xG V"] = val_visitante
@@ -173,24 +173,18 @@ if btn_conectar:
                                         elif "Córneres" in categoria or "Córners" in categoria:
                                             datos_partido["Córneres L"] = val_local
                                             datos_partido["Córneres V"] = val_visitante
+                                        elif "Tarjetas amarillas" in categoria:
+                                            datos_partido["TA L"] = val_local
+                                            datos_partido["TA V"] = val_visitante
+                                        elif "Tarjetas rojas" in categoria:
+                                            datos_partido["TR L"] = val_local
+                                            datos_partido["TR V"] = val_visitante
                                         elif "Pases" in categoria and "Precisión" not in categoria:
-                                            # Manejo dinámico para formato de pases ej: "68%\n(67/99)" o cadenas continuas
                                             lineas_l = val_local.split('\n')
                                             lineas_v = val_visitante.split('\n')
                                             
                                             datos_partido["Precisión Pases L"] = lineas_l[0]
                                             datos_partido["Precisión Pases V"] = lineas_v[0]
-                                            
-                                            # Regex para extraer la fracción (completados/totales)
-                                            match_l = re.search(r'\((\d+)/(\d+)\)', val_local.replace(" ", ""))
-                                            match_v = re.search(r'\((\d+)/(\d+)\)', val_visitante.replace(" ", ""))
-                                            
-                                            if match_l:
-                                                datos_partido["Pases Completados L"] = match_l.group(1)
-                                                datos_partido["Pases Totales L"] = match_l.group(2)
-                                            if match_v:
-                                                datos_partido["Pases Completados V"] = match_v.group(1)
-                                                datos_partido["Pases Totales V"] = match_v.group(2)
                                 except:
                                     continue
                             
@@ -203,15 +197,15 @@ if btn_conectar:
                     
                     progreso_barra.progress((index + 1) / num_partidos)
                 
-                status_text.success("🎯 ¡Métricas e indicadores avanzados consolidados!")
+                status_text.success("🎯 ¡Todas las métricas reglamentarias y de presión consolidadas!")
                 
-                # 3. Conversión y normalización de tipos numéricos para facilitar filtros en la UI
+                # 3. Conversión y normalización de tipos numéricos
                 df = pd.DataFrame(lista_partidos)
                 
                 columnas_enteras = [
                     "Remates Totales L", "Remates Totales V", "Remates Puerta L", "Remates Puerta V",
                     "Grandes Ocasiones L", "Grandes Ocasiones V", "Córneres L", "Córneres V",
-                    "Pases Completados L", "Pases Completados V", "Pases Totales L", "Pases Totales V"
+                    "TA L", "TA V", "TR L", "TR V"
                 ]
                 for col in columnas_enteras:
                     if col in df.columns:
@@ -222,24 +216,25 @@ if btn_conectar:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
                 
                 # Desplegar interfaz analítica avanzada ordenada por volumen de ataque
-                st.subheader("🔥 Panel In-Play Avanzado (Volumen de Presión & xG)")
+                st.subheader("🔥 Panel In-Play Completo (Métricas Críticas de Arbitraje y Ataque)")
                 
                 columnas_mostrar = [
                     "Tiempo", "Local", "GL", "GV", "Visitante", 
                     "xG L", "xG V",
                     "Córneres L", "Córneres V", 
                     "Remates Puerta L", "Remates Puerta V", 
+                    "Remates Totales L", "Remates Totales V",
                     "Grandes Ocasiones L", "Grandes Ocasiones V",
+                    "TA L", "TA V", "TR L", "TR V",
                     "Posesión L", "Posesión V",
-                    "Precisión Pases L", "Precisión Pases V",
-                    "ID Partido"
+                    "Precisión Pases L", "Precisión Pases V"
                 ]
                 
                 st.dataframe(df[columnas_mostrar], use_container_width=True)
                 
                 # Guardar automáticamente la matriz para análisis
                 df.to_csv("analisis_live_apuestas.csv", index=False, encoding="utf-8-sig")
-                st.success(f"💾 Matriz de datos de alta definición guardada en 'analisis_live_apuestas.csv'")
+                st.success(f"💾 Base de datos completa en tiempo real guardada en 'analisis_live_apuestas.csv'")
                 
             else:
                 st.warning("⚠️ Cero (0) partidos en directo localizados con los selectores actuales.")
