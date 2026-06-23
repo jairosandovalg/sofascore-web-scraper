@@ -5,37 +5,42 @@ import subprocess
 import sys
 from streamlit_autorefresh import st_autorefresh
 
-# --- INSTALACIÓN OPTIMIZADA Y CONTROLADA DE PLAYWRIGHT ---
+# --- INSTALACIÓN FORZADA DE BINARIOS Y DEPENDENCIAS DE SISTEMA ---
 @st.cache_resource
-def iniciar_entorno_playwright():
-    # Creamos un indicador visual elegante en la interfaz mientras descarga en segundo plano
-    with st.spinner("🚀 Configurando el motor de navegación en la nube... Esto puede tomar 1 o 2 minutos en el primer inicio."):
+def inicializar_entorno_linux():
+    with st.spinner("🔧 Configurando librerías del sistema y navegador... Esto tardará un momento en el primer inicio."):
         try:
-            # Ejecuta la descarga de Chromium capturando los logs para no congelar la app
+            # 1. Instala el navegador Chromium aislado
             subprocess.run(
                 [sys.executable, "-m", "playwright", "install", "chromium"], 
                 check=True, 
                 capture_output=True
             )
+            # 2. CORRECCIÓN CRÍTICA PARA EXIT CODE 127: Instala las dependencias del sistema operativo que falten
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install-deps"], 
+                check=True, 
+                capture_output=True
+            )
             return True
         except Exception as e:
-            st.error(f"Error al inicializar el navegador: {e}")
+            st.error(f"Error crítico configurando el entorno Linux: {e}")
             return False
 
-# Ejecutamos la función de caché antes de renderizar el resto del diseño
-navegador_listo = iniciar_entorno_playwright()
+# Ejecutamos la inicialización limpia
+entorno_listo = inicializar_entorno_linux()
 
 # CONFIGURACIÓN DE LA INTERFAZ
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
 
-# Solo habilitamos el autorefresh y el flujo si el navegador ya está descargado e instalado
-if navegador_listo:
+if entorno_listo:
+    # Refresco automático de la pantalla cada 15 segundos
     st_autorefresh(interval=15 * 1000, key="datarefresh")
 
     archivo_datos = "analisis_live_apuestas.csv"
 
-    # Botón manual de emergencia optimizado
+    # Botón manual de emergencia por si el automatizado se duerme
     col1, col2 = st.columns([8, 2])
     with col2:
         if st.button("🔄 Forzar Raspado Manual", use_container_width=True):
@@ -60,31 +65,37 @@ if navegador_listo:
     if os.path.exists(archivo_datos):
         try:
             df = pd.read_csv(archivo_datos)
-            if not df.empty:
-                if "Última Actualización" in df.columns:
-                    ultima_hora = df["Última Actualización"].iloc[0]
-                    st.success(f"🔄 Interfaz sincronizada en la nube. Último barrido: **{ultima_hora}**")
+            
+            if not df.empty and "Última Actualización" in df.columns:
+                ultima_hora = df["Última Actualización"].iloc[0]
+                st.success(f"🔄 Interfaz sincronizada en la nube. Último barrido del robot: **{ultima_hora}**")
                 
                 st.subheader("🔥 Presión y Volumen de Ataque en Directo")
+                
                 columnas_mostrar = [
                     "Tiempo", "Local", "GL", "GV", "Visitante", 
                     "xG L", "xG V", "Córneres L", "Córneres V", 
-                    "Remates Puerta L", "Remates Puerta V", "Remates Totales L", "Remates Totales V"
+                    "Remates Puerta L", "Remates Puerta V", "Remates Totales L", "Remates Totales V",
+                    "Grandes Ocasiones L", "Grandes Ocasiones V", "TA L", "TA V", "TR L", "TR V",
+                    "Posesión L", "Posesión V", "Precisión Pases L", "Precisión Pases V"
                 ]
+                
                 columnas_validas = [col for col in columnas_mostrar if col in df.columns]
                 st.dataframe(df[columnas_validas], use_container_width=True, height=600)
             else:
-                st.info("⏳ Esperando encuentros en vivo...")
+                st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
+                
         except Exception as e:
-            st.error("⏳ Archivo temporalmente ocupado, reintentando...")
+            st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando...")
     else:
         st.warning("⏳ Esperando la primera generación del archivo de datos...")
+        st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
         
         if "auto_start_initiated" not in st.session_state:
             st.session_state["auto_start_initiated"] = True
             try:
                 subprocess.Popen([sys.executable, "cron_scraper.py"], start_new_session=True)
             except Exception as e:
-                st.error(f"No se pudo inicializar el motor: {e}")
+                st.error(f"No se pudo inicializar el motor automático: {e}")
 else:
-    st.info("Por favor, espera a que finalice la instalación interna en la consola de la derecha.")
+    st.error("No se pudo iniciar la aplicación porque faltan componentes del sistema en el servidor.")
