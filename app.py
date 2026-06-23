@@ -1,49 +1,32 @@
 import streamlit as st
 import pandas as pd
 import os
-from streamlit_autorefresh import st_autorefresh
-import threading
 import subprocess
 import sys
+from streamlit_autorefresh import st_autorefresh
 
-# ====================================================================
-# 🚀 CONTROL NATIVO DE HILOS PARA SCRAPER 24/7 EN SEGUNDO PLANO
-# ====================================================================
-def arrancar_scraper_background():
-    try:
-        # CORRECCIÓN CRÍTICA: NO usar st.write aquí adentro.
-        # Ejecutamos la instalación en silencio dentro del subproceso secundario
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-        
-        # Iniciar el script cron de manera asíncrona y aislada
-        subprocess.Popen(
-            [sys.executable, "cron_scraper.py"],
-            stdout=None,
-            stderr=None,
-            start_new_session=True
-        )
-    except Exception as e:
-        print(f"❌ Error crítico en el hilo conductor: {e}")
-
-# Verificamos si el hilo ya ha sido lanzado en esta sesión del contenedor
-if "scraper_inicializado" not in st.session_state:
-    st.session_state["scraper_inicializado"] = True
-    threading.Thread(target=arrancar_scraper_background, daemon=True).start()
-
-# ====================================================================
-# 💻 CONFIGURACIÓN DE LA INTERFAZ DE STREAMLIT
-# ====================================================================
+# CONFIGURACIÓN DE LA INTERFAZ
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
 
-# Refresco automático de la pantalla cada 10 segundos
-st_autorefresh(interval=10 * 1000, key="datarefresh")
+# Refresco automático de la pantalla cada 15 segundos
+st_autorefresh(interval=15 * 1000, key="datarefresh")
 
 archivo_datos = "analisis_live_apuestas.csv"
 
-# ====================================================================
-# 📊 CONTROL Y DESPLIEGUE DE LA MATRIZ DE DATOS
-# ====================================================================
+# Botón manual de emergencia por si el automatizado se duerme
+col1, col2 = st.columns([8, 2])
+with col2:
+    if st.button("🔄 Forzar Raspado Manual"):
+        with st.spinner("Ejecutando escaneo manual..."):
+            try:
+                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+                subprocess.run([sys.executable, "cron_scraper.py"], timeout=90)
+                st.success("¡Completado!")
+            except Exception as ex:
+                st.error(f"Error: {ex}")
+
+# DESPLIEGUE DE DATOS
 if os.path.exists(archivo_datos):
     try:
         df = pd.read_csv(archivo_datos)
@@ -68,7 +51,15 @@ if os.path.exists(archivo_datos):
             st.info("⏳ Al momento no hay partidos en directo disponibles en Flashscore. Esperando encuentros...")
             
     except Exception as e:
-        st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando en 10s...")
+        st.error(f"⏳ Archivo de intercambio temporalmente ocupado. Reintentando...")
 else:
-    st.warning("⏳ Inicializando el motor de raspado automatizado en el servidor Cloud...")
-    st.info("El script `cron_scraper.py` ha sido despertado en segundo plano. Tomará aproximadamente 60-90 segundos en completar su primer barrido.")
+    st.warning("⏳ Esperando la primera generación del archivo de datos...")
+    st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
+    
+    # Intento de arranque automático sutil en segundo plano si no existe el archivo
+    if "auto_start" not in st.session_state:
+        st.session_state["auto_start"] = True
+        try:
+            subprocess.Popen([sys.executable, "cron_scraper.py"], start_new_session=True)
+        except:
+            pass
