@@ -3,22 +3,20 @@ import sys
 import time
 import pandas as pd
 import re
-import gc  # Importamos el recolector de basura nativo
+import gc  
 from playwright.sync_api import sync_playwright
 
-# Intervalo seguro y óptimo de actualización en segundos
 INTERVALO_REFRESCO = 20 
 
 def ejecutar_raspado():
-    # Iniciamos el contexto de Playwright DENTRO de la función para que se destruya al finalizar
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True, 
             args=[
                 "--no-sandbox", 
                 "--disable-dev-shm-usage",
-                "--disable-gpu",               # Desactiva la aceleración por hardware para ahorrar RAM crítica
-                "--js-flags=--max-old-space-size=256", # Limita el uso de memoria javascript dentro de las pestañas
+                "--disable-gpu",               
+                "--js-flags=--max-old-space-size=256", 
                 "--disable-blink-features=AutomationControlled"
             ]
         )
@@ -32,7 +30,6 @@ def ejecutar_raspado():
         page.goto("https://www.flashscore.pe/", timeout=45000, wait_until="domcontentloaded")
         time.sleep(3)
         
-        # Filtro en directo nativo
         locator_flexible = page.locator("div[class*='filters__text']:has-text('DIRECTO'), div[class*='filters__text']:has-text('LIVE')").first
         if locator_flexible.count() > 0:
             locator_flexible.dispatch_event("click")
@@ -121,13 +118,11 @@ def ejecutar_raspado():
                                         datos_partido["Precisión Pases V"] = val_visitante.split('\n')[0]
                             except:
                                 continue
-                        # Cerramos la pestaña inmediatamente para liberar memoria por partido
                         sub_page.close()
                     lista_partidos.append(datos_partido)
                 except:
                     continue
             
-            # Formatear y consolidar matriz
             df = pd.DataFrame(lista_partidos)
             columnas_enteras = ["Remates Totales L", "Remates Totales V", "Remates Puerta L", "Remates Puerta V", "Grandes Ocasiones L", "Grandes Ocasiones V", "Córneres L", "Córneres V", "TA L", "TA V", "TR L", "TR V"]
             for col in columnas_enteras:
@@ -140,21 +135,23 @@ def ejecutar_raspado():
             df.to_csv("analisis_live_apuestas.csv", index=False, encoding="utf-8-sig")
             print("✅ Archivo de intercambio reescrito con éxito.")
             
-        browser.close() # 🌟 CERRAMOS CHROMIUM POR COMPLETO (Saca toda la RAM del contenedor)
+        browser.close()
 
 if __name__ == "__main__":
-    # Bucle infinito blindado 24/7 a prueba de caídas
+    try:
+        print("📥 Verificando e instalando binarios de Playwright...")
+        os.system(f"{sys.executable} -m playwright install chromium")
+    except Exception as ex:
+        print(f"⚠️ Nota de instalación: {ex}")
+
     while True:
         try:
             ejecutar_raspado()
         except Exception as e:
-            # Si el script se cae por falta de red, timeout o bloqueo, imprime el error y no muere
-            print(f"⚠️ Alerta controlada: Ocurrió un fallo en el ciclo de raspado ({e}). Reiniciando motor en 10s...")
+            print(f"⚠️ Alerta controlada: Fallo en el ciclo ({e}). Reiniciando en 10s...")
             time.sleep(10)
             continue
         
-        # 🔥 LIMPIEZA AGRESIVA DE MEMORIA RAM DE PYTHON
         gc.collect() 
-        
         print(f"💤 Ciclo terminado. Esperando {INTERVALO_REFRESCO} segundos...\n")
         time.sleep(INTERVALO_REFRESCO)
