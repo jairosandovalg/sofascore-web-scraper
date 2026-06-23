@@ -11,7 +11,12 @@ import sys
 # ====================================================================
 def arrancar_scraper_background():
     try:
-        # Se inicia el subproceso en una sesión separada de Linux (previene interrupciones mutuas)
+        # 1. Forzar de manera segura la instalación interna del binario de Chromium
+        # Usamos sys.executable para que se instale exactamente en el entorno virtual activo
+        st.write("🔧 Configurando controladores de navegación en el servidor cloud...")
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        
+        # 2. Se inicia el subproceso en una sesión separada de Linux (evita interrupciones mutuas)
         subprocess.Popen(
             [sys.executable, "cron_scraper.py"],
             stdout=None,
