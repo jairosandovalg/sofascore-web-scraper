@@ -2,4 +2,3 @@ streamlit
 pandas
 streamlit-autorefresh
 playwright
---find-links https://download.pytorch.org/whl/cpu
