@@ -2,6 +2,20 @@ import streamlit as st
 import pandas as pd
 import os
 from streamlit_autorefresh import st_autorefresh
+import threading
+import subprocess
+import os
+
+# Función para arrancar el cron_scraper en segundo plano dentro del servidor cloud
+def arrancar_scraper_background():
+    if not os.path.exists("scraper_activo.txt"):
+        with open("scraper_activo.txt", "w") as f:
+            f.write("running")
+        # Ejecuta el script de python de forma independiente y asíncrona
+        subprocess.Popen(["python", "cron_scraper.py"])
+
+# Lanzar el hilo persistente si no está corriendo
+threading.Thread(target=arrancar_scraper_background, daemon=True).start()
 
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
