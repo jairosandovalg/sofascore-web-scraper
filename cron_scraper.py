@@ -4,8 +4,10 @@ import pandas as pd
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 
-# Forzar ruta compartida del navegador
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.getcwd(), ".playwright-browsers")
+# --- ELIMINAR RUTA LOCAL CONFUSING ---
+# Esto obliga al script hijo a buscar Chromium en el path global del contenedor de Linux
+if "PLAYWRIGHT_BROWSERS_PATH" in os.environ:
+    del os.environ["PLAYWRIGHT_BROWSERS_PATH"]
 
 def log_registro(mensaje):
     """Escribe lo que hace el script en la consola y en un archivo local"""
@@ -15,6 +17,7 @@ def log_registro(mensaje):
     with open("robot_ejecucion.log", "a", encoding="utf-8") as f:
         f.write(texto)
 
+# ... (El resto del código de ejecutar_raspado() que ya teníamos corregido para Flashscore)
 def ejecutar_raspado():
     archivo_salida = "analisis_live_apuestas.csv"
     
