@@ -5,9 +5,27 @@ import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+# --- INICIALIZACIÓN GLOBAL DE CHROMIUM EN LA NUBE ---
+@st.cache_resource
+def instalar_navegador_global():
+    try:
+        # Ejecuta la instalación nativa en el path por defecto del sistema de la nube
+        subprocess.run(["playwright", "install", "chromium"], check=True, capture_output=True)
+        return True
+    except Exception as e:
+        # Alternativa por si el comando directo falla en ciertos paths de entornos Linux
+        try:
+            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
+            return True
+        except:
+            return False
+
+instalar_navegador_global()
+
 # CONFIGURACIÓN DE LA INTERFAZ DE STREAMLIT
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
+
 
 # Refresco automático de la pantalla del navegador cada 15 segundos
 st_autorefresh(interval=15 * 1000, key="datarefresh")
