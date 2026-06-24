@@ -1,8 +1,8 @@
-import streamlit as st
-import pandas as pd
 import os
-import subprocess
 import sys
+import subprocess
+import pandas as pd
+import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURACIÓN DE RUTA LOCAL ABSOLUTA PARA PLAYWRIGHT ---
@@ -35,6 +35,8 @@ if entorno_listo:
     # Refresco automático de la pantalla cada 15 segundos
     st_autorefresh(interval=15 * 1000, key="datarefresh")
 
+    # !! NOTA: Asegúrate de que tu script de raspado se llame exactamente 'cron_scraper.py'
+    nombre_script_raspador = "cron_scraper.py"
     archivo_datos = "analisis_live_apuestas.csv"
 
     # Botón manual de emergencia por si el automatizado se duerme
@@ -44,7 +46,7 @@ if entorno_listo:
             with st.spinner("Ejecutando escaneo manual..."):
                 try:
                     resultado = subprocess.run(
-                        [sys.executable, "cron_scraper.py"], 
+                        [sys.executable, nombre_script_raspador], 
                         timeout=90, 
                         capture_output=True, 
                         text=True,
@@ -55,7 +57,7 @@ if entorno_listo:
                 except subprocess.TimeoutExpired:
                     st.error("Error: El raspado manual superó el tiempo límite.")
                 except subprocess.CalledProcessError as e:
-                    st.error(f"Error en el script de raspado:")
+                    st.error("Error en el script de raspado:")
                     st.code(e.stderr if e.stderr else e.output)
 
     # DESPLIEGUE DE DATOS
@@ -69,6 +71,7 @@ if entorno_listo:
                 
                 st.subheader("🔥 Presión y Volumen de Ataque en Directo")
                 
+                # Columnas mapeadas idénticas a la salida de tu nuevo raspador corregido
                 columnas_mostrar = [
                     "Tiempo", "Local", "GL", "GV", "Visitante", 
                     "xG L", "xG V", "Córneres L", "Córneres V", 
@@ -78,12 +81,16 @@ if entorno_listo:
                 ]
                 
                 columnas_validas = [col for col in columnas_mostrar if col in df.columns]
-                st.dataframe(df[columnas_validas], use_container_width=True, height=600)
+                
+                # RECOMENDACIÓN DE LIMPIEZA: Rellenar valores vacíos (NaN) con guiones o vacío para evitar ruidos visuales
+                df_filtrado = df[columnas_validas].fillna("-")
+                
+                st.dataframe(df_filtrado, use_container_width=True, height=600)
             else:
                 st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
                 
         except Exception as e:
-            st.error(f"⏳ Archivo de intercambio de datos ocupado. Sincronizando...")
+            st.error("⏳ Archivo de intercambio de datos ocupado. Sincronizando...")
     else:
         st.warning("⏳ Esperando la primera generación del archivo de datos...")
         st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
@@ -91,7 +98,7 @@ if entorno_listo:
         if "auto_start_initiated" not in st.session_state:
             st.session_state["auto_start_initiated"] = True
             try:
-                subprocess.Popen([sys.executable, "cron_scraper.py"], start_new_session=True)
+                subprocess.Popen([sys.executable, nombre_script_raspador], start_new_session=True)
             except Exception as e:
                 st.error(f"No se pudo inicializar el motor automático: {e}")
 else:
@@ -105,7 +112,7 @@ st.subheader("🕵️‍♂️ Auditoría del Robot en Vivo (Logs)")
 if os.path.exists("robot_ejecucion.log"):
     with open("robot_ejecucion.log", "r", encoding="utf-8") as f:
         lineas = f.readlines()
-    # Muestra las últimas 15 líneas grabadas por el cron_scraper.py
+    # Muestra las últimas 15 líneas grabadas por el robot
     st.code("".join(lineas[-15:]))
 else:
     st.info("El archivo de registro de eventos aún no se ha generado en el servidor.")
