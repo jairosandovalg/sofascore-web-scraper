@@ -1,0 +1,11 @@
+name: app-environment
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - streamlit
+      - pandas
+      - playwright
+      - streamlit-autorefresh
+  - post_build:
+      - playwright install chromium
