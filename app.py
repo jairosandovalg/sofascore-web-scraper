@@ -5,27 +5,27 @@ import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-# --- INICIALIZACIÓN GLOBAL DE CHROMIUM EN LA NUBE ---
+# --- LIMPIEZA ASISTIDA DE ENTORNO NATIVO EN LA NUBE ---
+# Eliminamos cualquier rastro de configuración local previa para evitar el error de ruta inexistente
+if "PLAYWRIGHT_BROWSERS_PATH" in os.environ:
+    del os.environ["PLAYWRIGHT_BROWSERS_PATH"]
+
 @st.cache_resource
 def instalar_navegador_global():
     try:
-        # Ejecuta la instalación nativa en el path por defecto del sistema de la nube
-        subprocess.run(["playwright", "install", "chromium"], check=True, capture_output=True)
+        # Forzar instalación en la ruta global estandarizada del host de linux
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
         return True
     except Exception as e:
-        # Alternativa por si el comando directo falla en ciertos paths de entornos Linux
-        try:
-            subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, capture_output=True)
-            return True
-        except:
-            return False
+        st.error(f"Error al desplegar Chromium global: {e}")
+        return False
 
+# Descargar binario oficial antes de arrancar la interfaz
 instalar_navegador_global()
 
 # CONFIGURACIÓN DE LA INTERFAZ DE STREAMLIT
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
-
 
 # Refresco automático de la pantalla del navegador cada 15 segundos
 st_autorefresh(interval=15 * 1000, key="datarefresh")
@@ -39,12 +39,18 @@ with col2:
     if st.button("🔄 Forzar Raspado Manual", use_container_width=True):
         with st.spinner("Ejecutando escaneo manual..."):
             try:
+                # Pasar una copia limpia de las variables de entorno del sistema operativo
+                env_limpio = os.environ.copy()
+                if "PLAYWRIGHT_BROWSERS_PATH" in env_limpio:
+                    del env_limpio["PLAYWRIGHT_BROWSERS_PATH"]
+
                 resultado = subprocess.run(
                     [sys.executable, nombre_script_raspador], 
                     timeout=90, 
                     capture_output=True, 
                     text=True,
-                    check=True
+                    check=True,
+                    env=env_limpio
                 )
                 st.success("¡Raspado completado con éxito!")
                 st.rerun()
@@ -88,13 +94,15 @@ else:
     if "auto_start_initiated" not in st.session_state:
         st.session_state["auto_start_initiated"] = True
         try:
-            subprocess.Popen([sys.executable, nombre_script_raspador], start_new_session=True)
+            env_limpio = os.environ.copy()
+            if "PLAYWRIGHT_BROWSERS_PATH" in env_limpio:
+                del env_limpio["PLAYWRIGHT_BROWSERS_PATH"]
+                
+            subprocess.Popen([sys.executable, nombre_script_raspador], start_new_session=True, env=env_limpio)
         except Exception as e:
             st.error(f"No se pudo inicializar el motor en segundo plano: {e}")
 
-# =====================================================================
-# VISOR DE LOGS INTEGRADO AL FINAL ABSOLUTO DE LA APP
-# =====================================================================
+# Visor de Logs integrado al final de la página
 st.markdown("---")
 st.subheader("🕵️‍♂️ Auditoría del Robot en Vivo (Logs)")
 if os.path.exists("robot_ejecucion.log"):
