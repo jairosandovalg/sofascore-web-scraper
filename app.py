@@ -11,35 +11,43 @@ os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(os.getcwd(), ".playwright-
 
 @st.cache_resource
 def inicializar_playwright_local():
-    with st.spinner("🚀 Sincronizando motor Chromium local en la nube (Paso Único)..."):
+    with st.spinner("🚀 Sincronizando motor Chromium y dependencias del sistema operativo Linux (Paso Único)..."):
         try:
-            # Instalamos el binario directamente en el directorio local del proyecto
+            # 1. Instalar el binario de Chromium directamente en el directorio local del proyecto
             subprocess.run(
                 [sys.executable, "-m", "playwright", "install", "chromium"], 
                 check=True, 
                 capture_output=True
             )
+            
+            # 2. Intentar inyectar las librerías compartidas de Linux (.so) que Chromium headless requiere
+            # Se usa check=False para evitar que la aplicación colapse si el entorno de la nube restringe el comando
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install-deps"], 
+                check=False, 
+                capture_output=True
+            )
             return True
         except Exception as e:
-            st.error(f"Error al inicializar el binario de Chromium: {e}")
+            st.error(f"Error crítico al inicializar el binario de Chromium o sus dependencias: {e}")
             return False
 
-# Inicializar entorno antes de construir la UI
+# Inicializar entorno (Navegador y Librerías del SO) antes de construir la interfaz de usuario
 entorno_listo = inicializar_playwright_local()
 
-# CONFIGURACIÓN DE LA INTERFAZ
+# CONFIGURACIÓN DE LA INTERFAZ DE STREAMLIT
 st.set_page_config(page_title="Radar Live 24/7", page_icon="⚽", layout="wide")
 st.title("⚽ Monitor General In-Play (Actualización Automática 24/7)")
 
 if entorno_listo:
-    # Refresco automático de la pantalla cada 15 segundos
+    # Refresco automático de la pantalla del navegador cada 15 segundos
     st_autorefresh(interval=15 * 1000, key="datarefresh")
 
-    # !! NOTA: Asegúrate de que tu script de raspado se llame exactamente 'cron_scraper.py'
+    # Configuración de nombres de archivo de intercambio
     nombre_script_raspador = "cron_scraper.py"
     archivo_datos = "analisis_live_apuestas.csv"
 
-    # Botón manual de emergencia por si el automatizado se duerme
+    # Fila superior de utilidades y botón manual de emergencia por si el automatizado se congela
     col1, col2 = st.columns([8, 2])
     with col2:
         if st.button("🔄 Forzar Raspado Manual", use_container_width=True):
@@ -55,12 +63,12 @@ if entorno_listo:
                     st.success("¡Raspado completado con éxito!")
                     st.rerun()
                 except subprocess.TimeoutExpired:
-                    st.error("Error: El raspado manual superó el tiempo límite.")
+                    st.error("Error: El raspado manual superó el tiempo límite asignado de 90 segundos.")
                 except subprocess.CalledProcessError as e:
                     st.error("Error en el script de raspado:")
                     st.code(e.stderr if e.stderr else e.output)
 
-    # DESPLIEGUE DE DATOS
+    # DESPLIEGUE DEL TABLERO DE DATOS
     if os.path.exists(archivo_datos):
         try:
             df = pd.read_csv(archivo_datos)
@@ -71,7 +79,7 @@ if entorno_listo:
                 
                 st.subheader("🔥 Presión y Volumen de Ataque en Directo")
                 
-                # Columnas mapeadas idénticas a la salida de tu nuevo raspador corregido
+                # Columnas mapeadas idénticas a la salida estructurada de tu raspador corregido
                 columnas_mostrar = [
                     "Tiempo", "Local", "GL", "GV", "Visitante", 
                     "xG L", "xG V", "Córneres L", "Córneres V", 
@@ -80,29 +88,31 @@ if entorno_listo:
                     "Posesión L", "Posesión V", "Precisión Pases L", "Precisión Pases V"
                 ]
                 
+                # Filtrar solo aquellas columnas que efectivamente se generaron en el CSV
                 columnas_validas = [col for col in columnas_mostrar if col in df.columns]
                 
-                # RECOMENDACIÓN DE LIMPIEZA: Rellenar valores vacíos (NaN) con guiones o vacío para evitar ruidos visuales
+                # Rellenar valores nulos (partidos que recién empiezan sin métricas aún) con guiones
                 df_filtrado = df[columnas_validas].fillna("-")
                 
                 st.dataframe(df_filtrado, use_container_width=True, height=600)
             else:
-                st.info("⏳ Al momento no hay partidos en directo disponibles. Esperando encuentros...")
+                st.info("⏳ Al momento no hay partidos en directo disponibles en la plataforma. Esperando encuentros...")
                 
         except Exception as e:
-            st.error("⏳ Archivo de intercambio de datos ocupado. Sincronizando...")
+            st.error("⏳ Archivo de intercambio de datos ocupado transitoriamente. Sincronizando en el siguiente ciclo...")
     else:
         st.warning("⏳ Esperando la primera generación del archivo de datos...")
-        st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' de arriba a la derecha para inicializar el archivo base.")
+        st.info("Si el motor automático tarda demasiado en el primer inicio, presiona el botón 'Forzar Raspado Manual' arriba a la derecha para inicializar el archivo base.")
         
+        # Disparar hilo secundario persistente si no se ha iniciado antes en la sesión actual
         if "auto_start_initiated" not in st.session_state:
             st.session_state["auto_start_initiated"] = True
             try:
                 subprocess.Popen([sys.executable, nombre_script_raspador], start_new_session=True)
             except Exception as e:
-                st.error(f"No se pudo inicializar el motor automático: {e}")
+                st.error(f"No se pudo inicializar el motor en segundo plano: {e}")
 else:
-    st.error("El entorno no se pudo inicializar correctamente.")
+    st.error("El entorno en la nube no cuenta con los privilegios básicos requeridos para montar el navegador headless.")
 
 # =====================================================================
 # VISOR DE LOGS INTEGRADO AL FINAL ABSOLUTO DE LA APP
@@ -112,7 +122,7 @@ st.subheader("🕵️‍♂️ Auditoría del Robot en Vivo (Logs)")
 if os.path.exists("robot_ejecucion.log"):
     with open("robot_ejecucion.log", "r", encoding="utf-8") as f:
         lineas = f.readlines()
-    # Muestra las últimas 15 líneas grabadas por el robot
+    # Muestra de forma segura el último bloque de texto para diagnosticar bloqueos
     st.code("".join(lineas[-15:]))
 else:
     st.info("El archivo de registro de eventos aún no se ha generado en el servidor.")
